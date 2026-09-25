@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -42,14 +43,14 @@ private val DarkScheme = darkColorScheme(
     primary = Cyan, onPrimary = Color(0xFF00212E), secondary = Gold, onSecondary = Color(0xFF2B1F00), tertiary = Indigo,
     background = Color(0xFF060A20), onBackground = Color(0xFFE6EAF7),
     surface = Color(0xFF0C1230), onSurface = Color(0xFFE6EAF7),
-    surfaceVariant = Color(0xFF161E45), onSurfaceVariant = Color(0xFFA9B3D6),
+    surfaceVariant = Color(0xFF161E45), onSurfaceVariant = Color(0xFFC3CBEA),
     surfaceContainer = Color(0xFF10173A), surfaceContainerHigh = Color(0xFF172050), surfaceContainerLow = Color(0xFF0B1130),
     outline = Color(0xFF2E3A73), outlineVariant = Color(0xFF222B5A),
 )
 
 private val LightScheme = lightColorScheme(
     primary = Color(0xFF0B6FA4), onPrimary = Color.White, secondary = Color(0xFF9A6B00), tertiary = Indigo,
-    background = Color(0xFFF3F5FB), onBackground = Color(0xFF0B1030),
+    background = Color(0xFFE6E9F0), onBackground = Color(0xFF0B1030),
     surface = Color(0xFFFFFFFF), onSurface = Color(0xFF0B1030),
     surfaceVariant = Color(0xFFE6EAF5), onSurfaceVariant = Color(0xFF4A557A),
     surfaceContainer = Color(0xFFF7F8FD), surfaceContainerHigh = Color(0xFFEDF0F8), surfaceContainerLow = Color(0xFFFBFCFF),
@@ -71,16 +72,22 @@ fun MarketTheme(settings: Settings, content: @Composable () -> Unit) {
         LocalSpacing provides spacing,
         LocalDark provides dark,
     ) {
-        MaterialTheme(colorScheme = if (dark) DarkScheme else LightScheme, content = content)
+        val scheme = if (dark) DarkScheme else LightScheme
+        MaterialTheme(colorScheme = scheme) {
+            // Screens sit on a transparent background (so the watermark shows). Without this, text on it
+            // falls back to black, which is unreadable in dark mode.
+            CompositionLocalProvider(LocalContentColor provides scheme.onBackground, content = content)
+        }
     }
 }
 
 /** App background: gradient plus the OrionMD logo watermark. */
 @Composable
-fun WatermarkBackground(alpha: Float, content: @Composable () -> Unit) {
+fun WatermarkBackground(darkAlpha: Float, lightAlpha: Float, content: @Composable () -> Unit) {
     val dark = LocalDark.current
+    val alpha = if (dark) darkAlpha else lightAlpha
     val bg = if (dark) Brush.verticalGradient(listOf(Color(0xFF0A0F2E), Color(0xFF060A20), Color(0xFF040716)))
-    else Brush.verticalGradient(listOf(Color(0xFFF6F7FC), Color(0xFFEEF1F9)))
+    else Brush.verticalGradient(listOf(Color(0xFFECEEF3), Color(0xFFE2E5EC), Color(0xFFD9DDE6)))
     BoxWithConstraints(Modifier.fillMaxSize().background(bg)) {
         val wide = maxWidth > maxHeight
         val res = when {

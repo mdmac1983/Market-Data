@@ -239,25 +239,6 @@ fun FearGreedCard() {
     }
 }
 
-@Composable
-fun PortfolioMiniCard() {
-    val nav = LocalNav.current
-    val d by Store.data.collectAsState()
-    val settings by Prefs.settings.collectAsState()
-    val syms = PortfolioCalc.holdings(d.txns).filter { it.qty > 0 }.map { it.symbol }
-    val q = rememberLive(syms)
-    val s = PortfolioCalc.summary(d.txns, q)
-    SectionCard("Portfolio", onTitleClick = { nav.go("portfolio") }) {
-        if (d.txns.isEmpty()) { TextButton(onClick = { nav.go("portfolio") }) { Text("Add your holdings →") }; return@SectionCard }
-        if (settings.lockPortfolio && !Session.unlocked) { TextButton(onClick = { nav.go("portfolio") }) { Text("🔒 Unlock to view") }; return@SectionCard }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile("Value", fmtMoney(s.value), Modifier.weight(1f))
-            StatTile("Today", fmtSignedMoney(s.dayChange), Modifier.weight(1f), fmtPct(s.dayPct), changeColor(s.dayChange))
-            StatTile("Total gain", fmtSignedMoney(s.unrealized), Modifier.weight(1f), fmtPct(s.totalReturnPct), changeColor(s.unrealized))
-        }
-    }
-}
-
 // ============================ Markets ============================
 
 @Composable

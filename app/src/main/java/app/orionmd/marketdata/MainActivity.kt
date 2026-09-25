@@ -73,9 +73,20 @@ class MainActivity : FragmentActivity() {
             MarketTheme(settings) {
                 var showSplash by rememberSaveable { mutableStateOf(savedInstanceState == null) }
                 LaunchedEffect(Unit) { delay(1600); showSplash = false }
+                // Make the system splash (shown before the app draws) follow the app's theme choice.
+                LaunchedEffect(settings.theme) {
+                    if (Build.VERSION.SDK_INT >= 31) runCatching {
+                        getSystemService(android.app.UiModeManager::class.java).setApplicationNightMode(
+                            when (settings.theme) {
+                                app.orionmd.marketdata.data.ThemeMode.DARK -> android.app.UiModeManager.MODE_NIGHT_YES
+                                app.orionmd.marketdata.data.ThemeMode.LIGHT -> android.app.UiModeManager.MODE_NIGHT_NO
+                                app.orionmd.marketdata.data.ThemeMode.SYSTEM -> android.app.UiModeManager.MODE_NIGHT_AUTO
+                            })
+                    }
+                }
                 var crash by remember { mutableStateOf(CrashLog.take(this@MainActivity)) }
                 Box(Modifier.fillMaxSize()) {
-                    WatermarkBackground(settings.watermarkAlpha) { AppRoot(pendingIntent) { pendingIntent = null } }
+                    WatermarkBackground(settings.watermarkAlpha, settings.lightWatermarkAlpha) { AppRoot(pendingIntent) { pendingIntent = null } }
                     AnimatedVisibility(showSplash, enter = fadeIn(), exit = fadeOut()) { Splash() }
                 }
                 crash?.let { text ->
@@ -104,9 +115,20 @@ class MainActivity : FragmentActivity() {
 
 @Composable
 private fun Splash() {
-    Box(Modifier.fillMaxSize().background(Color(0xFF05091F)), contentAlignment = Alignment.Center) {
-        Image(painterResource(R.drawable.splash_full), "OrionMD", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp).size(22.dp), color = Color(0xFF3FC8F5), strokeWidth = 2.dp)
+    if (app.orionmd.marketdata.ui.LocalDark.current) {
+        Box(Modifier.fillMaxSize().background(Color(0xFF05091F)), contentAlignment = Alignment.Center) {
+            Image(painterResource(R.drawable.splash_full), "OrionMD", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp).size(22.dp), color = Color(0xFF3FC8F5), strokeWidth = 2.dp)
+        }
+    } else {
+        // Light mode: light-gray background with the logo in dark ink so it stands out.
+        Box(
+            Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFEEF0F4), Color(0xFFE1E4EB), Color(0xFFD6DAE3)))),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(painterResource(R.drawable.watermark_ink), "OrionMD", Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentScale = ContentScale.FillWidth)
+            CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp).size(22.dp), color = Color(0xFF0B6FA4), strokeWidth = 2.dp)
+        }
     }
 }
 
@@ -147,6 +169,7 @@ private fun titleFor(route: String?, arg: String?): String = when {
     route.startsWith("movers") -> "Top movers"
     route.startsWith("filings") -> "SEC filings"
     route == "search" -> "Search"
+    route == "import" -> "Import transactions"
     else -> tabs.firstOrNull { it.route == route }?.label ?: moreItems.firstOrNull { it.route == route }?.label ?: "Market_Data"
 }
 
@@ -157,7 +180,7 @@ private fun reportFor(route: String?, arg: String?): Pair<ReportKind, String?> =
     route == "crypto" || route == "exchanges" -> ReportKind.CRYPTO to null
     route == "watchlists" -> ReportKind.WATCHLIST to null
     route == "news" -> ReportKind.NEWS to null
-    route == "portfolio" -> ReportKind.PORTFOLIO to null
+    route == "portfolio" || route == "import" -> ReportKind.PORTFOLIO to null
     route == "paper" -> ReportKind.PAPER to null
     route == "calendars" -> ReportKind.CALENDARS to null
     route == "economy" -> ReportKind.ECONOMY to null
@@ -202,9 +225,15 @@ private fun AppRoot(intent: Intent?, consumed: () -> Unit) {
     CompositionLocalProvider(LocalNav provides navApi) {
         Scaffold(
             containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onBackground,
             topBar = {
                 TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                        actionIconContentColor = MaterialTheme.colorScheme.onBackground,
+                    ),
                     navigationIcon = {
                         if (!isTab) IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                         else Image(painterResource(R.drawable.logo_square), null, Modifier.padding(start = 12.dp, end = 4.dp).size(30.dp).clip(CircleShape))
@@ -251,7 +280,7 @@ private fun AppRoot(intent: Intent?, consumed: () -> Unit) {
             },
         ) { pad ->
             Row(Modifier.padding(pad).fillMaxSize()) {
-                if (wide) NavigationRail(containerColor = Color.Transparent) {
+                if (wide) NavigationRail(containerColor = Color.Transparent, contentColor = MaterialTheme.colorScheme.onBackground) {
                     tabs.forEach { t ->
                         NavigationRailItem(selected = route == t.route,
                             onClick = { nav.navigate(t.route) { popUpTo("dashboard") { saveState = true }; launchSingleTop = true; restoreState = true } },
@@ -282,6 +311,9 @@ private fun Routes(nav: NavHostController) {
             CompareScreen(it.arguments?.getString("syms").orEmpty().split(",").filter { s -> s.isNotBlank() })
         }
         composable("portfolio") { LockGate { PortfolioScreen() } }
+        composable("import?pf={pf}", arguments = listOf(navArgument("pf") { type = NavType.StringType; defaultValue = "" })) {
+            LockGate { ImportScreen(it.arguments?.getString("pf").orEmpty()) }
+        }
         composable("paper") { LockGate { PaperScreen() } }
         composable("alerts") { AlertsScreen() }
         composable("calendars") { CalendarsScreen() }

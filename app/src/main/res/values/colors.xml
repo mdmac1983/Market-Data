@@ -1,4 +1,6 @@
 <resources>
     <color name="navy">#FF040A24</color>
     <color name="ic_launcher_background">#FF040A24</color>
+    <!-- Light mode: light gray behind the splash icon and before the app draws -->
+    <color name="splash_bg">#FFE6E9EF</color>
 </resources>

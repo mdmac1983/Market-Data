@@ -54,8 +54,10 @@ fun SettingsScreen() {
                 ChipRow(listOf("Dark", "Light", "System"), s.theme.name.lowercase().replaceFirstChar { it.uppercase() }, { v -> Prefs.update { it.copy(theme = ThemeMode.valueOf(v.uppercase())) } })
                 Text("Text size: ${(s.textScale * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
                 Slider(s.textScale, { v -> Prefs.update { it.copy(textScale = (v * 20).toInt() / 20f) } }, valueRange = 0.85f..1.3f, steps = 8)
-                Text("Watermark strength: ${(s.watermarkAlpha * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
-                Slider(s.watermarkAlpha, { v -> Prefs.update { it.copy(watermarkAlpha = v) } }, valueRange = 0f..0.7f)
+                Text("Watermark in dark mode: ${(s.watermarkAlpha * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
+                Slider(s.watermarkAlpha, { v -> Prefs.update { it.copy(watermarkAlpha = v) } }, valueRange = 0f..0.8f)
+                Text("Watermark in light mode: ${(s.lightWatermarkAlpha * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
+                Slider(s.lightWatermarkAlpha, { v -> Prefs.update { it.copy(lightWatermarkAlpha = v) } }, valueRange = 0f..1f)
                 SettingRow("Compact layout", "Tighter rows so more fits on screen") { Switch(s.compact, { v -> Prefs.update { it.copy(compact = v) } }) }
             }
         }
@@ -188,6 +190,7 @@ fun BackupScreen() {
             val o = JSONObject(ctx.contentResolver.openInputStream(uri)!!.bufferedReader().readText())
             val data = Store.fromJson(o.getJSONObject("data"))
             Store.update { data }
+            Store.migrate()
             o.optJSONObject("settings")?.let { st ->
                 val restored = Settings.fromJson(st)
                 Prefs.update { cur -> restored.copy(pinHash = cur.pinHash, keys = if (restored.keys.isEmpty()) cur.keys else restored.keys) }
@@ -201,8 +204,8 @@ fun BackupScreen() {
     }
     val csvTxns = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val csv = "date,symbol,action,quantity,price,fees,note\n" + Store.current.txns.sortedBy { it.date }.joinToString("\n") {
-            "${PortfolioCalc.fmtDate(it.date)},${it.symbol},${it.kind.name},${it.qty},${it.price},${it.fees},\"${it.note}\""
+        val csv = "date,symbol,action,quantity,price,fees,note,portfolio\n" + Store.current.txns.sortedBy { it.date }.joinToString("\n") {
+            "${PortfolioCalc.fmtDate(it.date)},${it.symbol},${it.kind.name},${it.qty},${it.price},${it.fees},\"${it.note}\",\"${Store.current.portfolioName(it.portfolio)}\""
         }
         runCatching { ctx.contentResolver.openOutputStream(uri)!!.use { it.write(csv.toByteArray()) } }.onSuccess { toast("Transactions exported") }
     }

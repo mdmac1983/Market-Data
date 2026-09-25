@@ -18,6 +18,7 @@ data class Settings(
     val textScale: Float = 1f,
     val compact: Boolean = false,
     val watermarkAlpha: Float = 0.35f,
+    val lightWatermarkAlpha: Float = 0.6f,
     val lockPortfolio: Boolean = false,
     val pinHash: String = "",
     val useBiometric: Boolean = true,
@@ -30,7 +31,7 @@ data class Settings(
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("theme", theme.name); put("refreshSec", refreshSec); put("streaming", streaming); put("textScale", textScale.toDouble())
-        put("compact", compact); put("watermarkAlpha", watermarkAlpha.toDouble()); put("lockPortfolio", lockPortfolio)
+        put("compact", compact); put("watermarkAlpha", watermarkAlpha.toDouble()); put("lightWatermarkAlpha", lightWatermarkAlpha.toDouble()); put("lockPortfolio", lockPortfolio)
         put("pinHash", pinHash); put("useBiometric", useBiometric); put("morningSummary", morningSummary)
         put("closingSummary", closingSummary); put("reportSchedule", reportSchedule.name); put("reportHour", reportHour)
         put("showExtendedHours", showExtendedHours); put("keys", JSONObject(keys as Map<*, *>))
@@ -44,6 +45,7 @@ data class Settings(
             textScale = o.optDouble("textScale", 1.0).toFloat(),
             compact = o.optBoolean("compact", false),
             watermarkAlpha = o.optDouble("watermarkAlpha", 0.35).toFloat(),
+            lightWatermarkAlpha = o.optDouble("lightWatermarkAlpha", 0.6).toFloat(),
             lockPortfolio = o.optBoolean("lockPortfolio", false),
             pinHash = o.optString("pinHash", ""),
             useBiometric = o.optBoolean("useBiometric", true),

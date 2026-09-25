@@ -75,6 +75,7 @@ object Reports {
             Opt.Toggle("news", "News", true), Opt.Choice("newsCount", "News items", listOf("5", "10", "20"), "10"),
         )
         ReportKind.PORTFOLIO -> listOf(
+            Opt.Choice("portfolio", "Portfolio", listOf("All portfolios") + Store.current.portfolios.map { it.name }, "All portfolios"),
             Opt.Toggle("holdings", "Holdings table", true), Opt.Choice("sort", "Sort holdings by", listOf("Value", "Symbol", "Gain %", "Day change"), "Value"),
             Opt.Toggle("allocation", "Allocation chart", true), Opt.Toggle("dividends", "Dividend income", true),
             Opt.Toggle("txns", "Transaction history", true), Opt.Toggle("closed", "Closed positions", false),
@@ -126,6 +127,8 @@ object Reports {
         }.toMutableMap()
         if (kind == ReportKind.SYMBOL && arg != null) values["symbol"] = arg
         if (kind == ReportKind.COMPARE && arg != null) values["symbols"] = arg
+        if (kind == ReportKind.PORTFOLIO && arg != null) values["portfolio"] = Store.current.portfolioName(arg)
+        if (kind == ReportKind.PORTFOLIO && values["portfolio"] != "All portfolios" && Store.current.portfolios.none { it.name == values["portfolio"] }) values["portfolio"] = "All portfolios"
         return ReportOptions(defaultTitle(kind, arg ?: values["symbol"].takeIf { kind == ReportKind.SYMBOL }), values)
     }
 
@@ -375,7 +378,9 @@ object Reports {
     )
 
     private suspend fun portfolio(w: PdfWriter, o: ReportOptions, p: (String, Float) -> Unit) {
-        val txns = Store.current.txns
+        val pid = Store.current.portfolios.firstOrNull { it.name == o.str("portfolio") }?.id ?: ALL_PORTFOLIOS
+        val txns = Store.current.txnsOf(pid)
+        if (pid != ALL_PORTFOLIOS || Store.current.portfolios.size > 1) w.h2("Portfolio: ${Store.current.portfolioName(pid)}")
         val hs = PortfolioCalc.holdings(txns)
         p("Getting quotes", 0.2f)
         val q = Market.quotes(hs.filter { it.qty > 0 }.map { it.symbol })

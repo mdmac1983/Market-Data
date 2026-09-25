@@ -11,7 +11,22 @@ import java.util.UUID
 data class Watchlist(val id: String, val name: String, val symbols: List<String>)
 
 enum class TxnKind { BUY, SELL, DIVIDEND }
-data class Txn(val id: String, val symbol: String, val kind: TxnKind, val qty: Double, val price: Double, val fees: Double, val date: Long, val note: String = "")
+data class Txn(val id: String, val symbol: String, val kind: TxnKind, val qty: Double, val price: Double, val fees: Double, val date: Long, val note: String = "", val portfolio: String = "main")
+
+/** A named portfolio (like a watchlist). Transactions point to it by [id]. */
+data class PortfolioDef(
+    val id: String,
+    val name: String,
+    /** Commission charged on crypto trades, in percent of trade value (E*TRADE crypto via Zero Hash: 0.5). */
+    val cryptoFeePct: Double = 0.0,
+) {
+    /** Fee for a crypto trade of [qty] × [price] under this portfolio's commission rate. */
+    fun cryptoFee(qty: Double, price: Double) = kotlin.math.round(qty * price * cryptoFeePct) / 100.0
+}
+
+const val ETRADE_CRYPTO_FEE_PCT = 0.5
+
+const val ALL_PORTFOLIOS = "all"
 
 enum class AlertKind(val label: String) { ABOVE("Price above"), BELOW("Price below"), PCT_UP("Day change ≥ +%"), PCT_DOWN("Day change ≤ −%") }
 data class Alert(val id: String, val symbol: String, val kind: AlertKind, val value: Double, val enabled: Boolean = true, val lastFired: Long = 0, val repeat: Boolean = false)
@@ -32,7 +47,14 @@ data class AppData(
     val trendlines: Map<String, List<Trendline>> = emptyMap(),
     val paper: Paper = Paper(),
     val pdfOptions: Map<String, String> = emptyMap(),
-)
+    val portfolios: List<PortfolioDef> = listOf(PortfolioDef("main", "My Portfolio")),
+    /** Which portfolio the dashboard card shows: a portfolio id or [ALL_PORTFOLIOS]. */
+    val dashPortfolio: String = ALL_PORTFOLIOS,
+    val migrations: Int = 0,
+) {
+    fun txnsOf(portfolioId: String): List<Txn> = if (portfolioId == ALL_PORTFOLIOS) txns else txns.filter { it.portfolio == portfolioId }
+    fun portfolioName(id: String): String = if (id == ALL_PORTFOLIOS) "All portfolios" else portfolios.firstOrNull { it.id == id }?.name ?: "Portfolio"
+}
 
 /** Cards that can be placed on the dashboard. */
 enum class DashboardCard(val title: String) {
@@ -42,7 +64,7 @@ enum class DashboardCard(val title: String) {
     GLOBAL("Global markets"), NEWS("Headlines"), EARNINGS("Upcoming earnings"), RECENT("Recently viewed");
 
     companion object {
-        val defaults = listOf(STATUS, INDICES, WATCHLIST, MOVERS, CRYPTO, FEAR_GREED, SECTORS, NEWS, FUTURES, COMMODITIES, YIELDS, FOREX).map { it.name }
+        val defaults = listOf(STATUS, INDICES, WATCHLIST, PORTFOLIO, MOVERS, CRYPTO, FEAR_GREED, SECTORS, NEWS, FUTURES, COMMODITIES, YIELDS, FOREX).map { it.name }
     }
 }
 
@@ -55,6 +77,22 @@ object Store {
     fun init(ctx: Context) {
         file = File(ctx.filesDir, "appdata.json")
         if (file.exists()) runCatching { _data.value = fromJson(JSONObject(file.readText())) }
+        migrate()
+    }
+
+    /** One-time upgrades for data saved by older versions. */
+    fun migrate() {
+        val d = _data.value
+        if (d.migrations < 1) update { cur ->
+            // v1: the Portfolio card was not on the default dashboard; add it after the watchlist.
+            val dash = if (DashboardCard.PORTFOLIO.name in cur.dashboard) cur.dashboard else {
+                val i = cur.dashboard.indexOf(DashboardCard.WATCHLIST.name)
+                cur.dashboard.toMutableList().apply { add(if (i >= 0) i + 1 else size.coerceAtMost(2), DashboardCard.PORTFOLIO.name) }
+            }
+            val ids = cur.portfolios.map { it.id }.toSet()
+            cur.copy(dashboard = dash, migrations = 1,
+                txns = cur.txns.map { if (it.portfolio in ids) it else it.copy(portfolio = cur.portfolios.first().id) })
+        }
     }
 
     @Synchronized
@@ -87,7 +125,7 @@ object Store {
         put("dashboard", JSONArray(d.dashboard))
         put("txns", JSONArray(d.txns.map {
             JSONObject().put("id", it.id).put("symbol", it.symbol).put("kind", it.kind.name).put("qty", it.qty).put("price", it.price)
-                .put("fees", it.fees).put("date", it.date).put("note", it.note)
+                .put("fees", it.fees).put("date", it.date).put("note", it.note).put("portfolio", it.portfolio)
         }))
         put("alerts", JSONArray(d.alerts.map {
             JSONObject().put("id", it.id).put("symbol", it.symbol).put("kind", it.kind.name).put("value", it.value)
@@ -106,6 +144,9 @@ object Store {
             }))
         })
         put("pdfOptions", JSONObject(d.pdfOptions as Map<*, *>))
+        put("portfolios", JSONArray(d.portfolios.map { JSONObject().put("id", it.id).put("name", it.name).put("cryptoFeePct", it.cryptoFeePct) }))
+        put("dashPortfolio", d.dashPortfolio)
+        put("migrations", d.migrations)
     }
 
     private fun JSONArray?.strings(): List<String> = this?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
@@ -121,7 +162,8 @@ object Store {
             dashboard = o.optJSONArray("dashboard")?.strings()?.filter { n -> DashboardCard.entries.any { it.name == n } } ?: def.dashboard,
             txns = o.optJSONArray("txns").objects().map {
                 Txn(it.optString("id"), it.optString("symbol"), runCatching { TxnKind.valueOf(it.optString("kind")) }.getOrDefault(TxnKind.BUY),
-                    it.optDouble("qty"), it.optDouble("price"), it.optDouble("fees", 0.0), it.optLong("date"), it.optString("note"))
+                    it.optDouble("qty"), it.optDouble("price"), it.optDouble("fees", 0.0), it.optLong("date"), it.optString("note"),
+                    it.optString("portfolio", "main").ifBlank { "main" })
             },
             alerts = o.optJSONArray("alerts").objects().map {
                 Alert(it.optString("id"), it.optString("symbol"), runCatching { AlertKind.valueOf(it.optString("kind")) }.getOrDefault(AlertKind.ABOVE),
@@ -149,6 +191,10 @@ object Store {
                 )
             } ?: Paper(),
             pdfOptions = o.optJSONObject("pdfOptions").stringMap(),
+            portfolios = o.optJSONArray("portfolios").objects().map { PortfolioDef(it.optString("id"), it.optString("name"), it.optDouble("cryptoFeePct", 0.0).takeIf { v -> !v.isNaN() } ?: 0.0) }
+                .filter { it.id.isNotBlank() }.ifEmpty { def.portfolios },
+            dashPortfolio = o.optString("dashPortfolio", ALL_PORTFOLIOS).ifBlank { ALL_PORTFOLIOS },
+            migrations = o.optInt("migrations", 0),
         )
     }
 }

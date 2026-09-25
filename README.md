@@ -43,7 +43,9 @@ Package: `app.orionmd.marketdata` · APK: `Market_Data.apk` · Android 8.0+ (API
   - Economy dashboard: Fed rate, CPI, jobs, GDP and the yield curve
   - Global indices
 - **Personal:**
-  - Portfolio tracker: average cost, day and total profit/loss, realized gains, dividend income, allocation chart and broker CSV import
+  - Portfolios: create as many named portfolios as you like (like watchlists), with an "All portfolios" view. Each shows average cost, day and total profit/loss, realized gains, dividend income and an allocation chart, and can be shown on the dashboard
+  - Transaction import: from a CSV file, a pasted list or rows typed in. You can check which column is which and review or edit every row before anything is saved. Recognizes E*TRADE transaction history and portfolio (positions) downloads, Fidelity, Schwab, Vanguard and Robinhood
+  - Crypto commission per portfolio, e.g. E*TRADE crypto (Zero Hash) at 0.50% per trade, filled in automatically
   - Paper trading
   - Price alerts, delivered as notifications
   - Notes
@@ -98,6 +100,8 @@ FINNHUB_API_KEY=...
 TWELVEDATA_API_KEY=...
 COINSTATS_API_KEY=...
 ```
+
+Unit tests for the importer: `./gradlew :app:testDebugUnitTest`
 
 Local build:
 
