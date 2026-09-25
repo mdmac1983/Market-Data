@@ -46,6 +46,12 @@ object QuoteHub {
 
     fun watchedSymbols(): Set<String> = interest.keys.toSet()
 
+    /** Symbols that only the ticker tape shows; they stream only if there's room under the free-tier cap. */
+    @Volatile var lowPriority: Set<String> = emptySet()
+
+    /** True when only the ticker tape (not a screen) is showing [s]. */
+    fun isTapeOnly(s: String) = s in lowPriority && (interest[s] ?: 0) <= 1
+
     fun unwatch(symbols: Collection<String>) {
         symbols.forEach { s -> interest.computeIfPresent(s) { _, n -> if (n <= 1) null else n - 1 } }
         Stream.update(interest.keys)
@@ -103,6 +109,7 @@ object Stream {
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected
     private var retryJob: Job? = null
+    const val MAX_STREAM = 48
 
     /** Products Coinbase actually lists; subscribing to an unknown one makes the whole subscription fail. */
     @Volatile var coinbaseProducts: Set<String> = setOf(
@@ -125,8 +132,11 @@ object Stream {
     @Synchronized
     fun update(symbols: Collection<String>) {
         if (!Prefs.current.streaming) { stop(); return }
-        val stocks = symbols.filter { typeOf(it) == AssetType.STOCK || typeOf(it) == AssetType.ETF }.toSet()
+        // Finnhub's free stream allows about 50 symbols: screens first, ticker tape fills what's left.
+        val stocks = symbols.filter { typeOf(it) == AssetType.STOCK || typeOf(it) == AssetType.ETF }
+            .sortedBy { if (QuoteHub.isTapeOnly(it)) 1 else 0 }.take(MAX_STREAM).toSet()
         val cryptos = symbols.filter { isCrypto(it) && it in coinbaseProducts }.toSet()
+        if (stocks.isEmpty() && fhSubs.isNotEmpty()) { fhSubs.forEach { finnhub?.send("""{"type":"unsubscribe","symbol":"$it"}""") }; fhSubs.clear() }
         if (stocks.isNotEmpty() && Keys.has("FINNHUB")) {
             val ws = finnhub ?: openFinnhub().also { finnhub = it }
             (stocks - fhSubs).forEach { ws.send("""{"type":"subscribe","symbol":"$it"}""") }

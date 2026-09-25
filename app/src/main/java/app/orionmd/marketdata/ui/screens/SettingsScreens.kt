@@ -76,6 +76,35 @@ fun SettingsScreen() {
             }
         }
         item {
+            SectionCard("Ticker tape") {
+                SettingRow("Show NYSE & NASDAQ ticker tape", "Two scrolling rows of live prices under the top bar. Tap a ticker to open it; press and hold to pause.") {
+                    Switch(s.tapeOn, { v -> Prefs.update { it.copy(tapeOn = v) } })
+                }
+                if (s.tapeOn) {
+                    Text("Show on", style = MaterialTheme.typography.labelLarge)
+                    ChipRow(listOf("Every screen", "Dashboard only"), if (s.tapeAllScreens) "Every screen" else "Dashboard only",
+                        { v -> Prefs.update { it.copy(tapeAllScreens = v == "Every screen") } })
+                    Text("Speed", style = MaterialTheme.typography.labelLarge)
+                    ChipRow(listOf("Slow", "Normal", "Fast"), listOf("Slow", "Normal", "Fast")[s.tapeSpeed.coerceIn(0, 2)],
+                        { v -> Prefs.update { it.copy(tapeSpeed = listOf("Slow", "Normal", "Fast").indexOf(v)) } })
+                    Text("Stocks", style = MaterialTheme.typography.labelLarge)
+                    ChipRow(listOf("Most active", "My lists"), if (s.tapeCustom) "My lists" else "Most active",
+                        { v -> Prefs.update { it.copy(tapeCustom = v == "My lists") } })
+                    if (!s.tapeCustom) {
+                        Text("Stocks per row", style = MaterialTheme.typography.labelLarge)
+                        ChipRow(listOf("10", "15", "20", "25"), s.tapeCount.toString(), { v -> Prefs.update { it.copy(tapeCount = v.toInt()) } })
+                        Text("Today's most active stocks on each exchange, refreshed every 5 minutes.", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        TapeListEditor("NYSE row", s.tapeNyse) { l -> Prefs.update { it.copy(tapeNyse = l) } }
+                        TapeListEditor("NASDAQ row", s.tapeNasdaq) { l -> Prefs.update { it.copy(tapeNasdaq = l) } }
+                    }
+                    Text("Up to about 48 stocks can stream tick by tick on the free Finnhub plan. Stocks on the screen you're viewing get priority; the rest refresh every ${s.refreshSec}s.",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item {
             SectionCard("Notifications") {
                 SettingRow("Morning brief", "Weekdays 9:00 AM ET: futures, VIX, yields, top movers") {
                     Switch(s.morningSummary, { v -> Prefs.update { it.copy(morningSummary = v) }; reschedule() })
@@ -247,4 +276,19 @@ fun BackupScreen() {
             }
         }
     }
+}
+
+@Composable
+private fun TapeListEditor(title: String, list: List<String>, onChange: (List<String>) -> Unit) {
+    var pick by remember { mutableStateOf(false) }
+    Text(title, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        list.forEach { sym ->
+            InputChip(true, { onChange(list - sym) }, { Text(Catalog.display(sym)) },
+                trailingIcon = { Icon(Icons.Default.Close, "Remove", Modifier.size(16.dp)) })
+        }
+        AssistChip(onClick = { pick = true }, label = { Text("Add") }, leadingIcon = { Icon(Icons.Default.Add, null) })
+        if (list.isNotEmpty()) TextButton(onClick = { onChange(emptyList()) }) { Text("Clear") }
+    }
+    if (pick) SymbolPicker("Add to $title", { pick = false }) { s -> if (s !in list) onChange(list + s); pick = false }
 }

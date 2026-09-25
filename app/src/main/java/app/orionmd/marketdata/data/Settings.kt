@@ -27,6 +27,14 @@ data class Settings(
     val reportSchedule: ReportSchedule = ReportSchedule.OFF,
     val reportHour: Int = 17,
     val showExtendedHours: Boolean = true,
+    // Ticker tape (NYSE + NASDAQ rows under the top bar)
+    val tapeOn: Boolean = true,
+    val tapeAllScreens: Boolean = true,
+    val tapeSpeed: Int = 1,          // 0 slow, 1 normal, 2 fast
+    val tapeCustom: Boolean = false, // false = most active, true = my lists
+    val tapeCount: Int = 15,
+    val tapeNyse: List<String> = Tape.defaultNyse,
+    val tapeNasdaq: List<String> = Tape.defaultNasdaq,
     val keys: Map<String, String> = emptyMap(),
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
@@ -34,7 +42,9 @@ data class Settings(
         put("compact", compact); put("watermarkAlpha", watermarkAlpha.toDouble()); put("lightWatermarkAlpha", lightWatermarkAlpha.toDouble()); put("lockPortfolio", lockPortfolio)
         put("pinHash", pinHash); put("useBiometric", useBiometric); put("morningSummary", morningSummary)
         put("closingSummary", closingSummary); put("reportSchedule", reportSchedule.name); put("reportHour", reportHour)
-        put("showExtendedHours", showExtendedHours); put("keys", JSONObject(keys as Map<*, *>))
+        put("showExtendedHours", showExtendedHours)
+        put("tapeOn", tapeOn); put("tapeAllScreens", tapeAllScreens); put("tapeSpeed", tapeSpeed); put("tapeCustom", tapeCustom)
+        put("tapeCount", tapeCount); put("tapeNyse", org.json.JSONArray(tapeNyse)); put("tapeNasdaq", org.json.JSONArray(tapeNasdaq)); put("keys", JSONObject(keys as Map<*, *>))
     }
 
     companion object {
@@ -54,6 +64,13 @@ data class Settings(
             reportSchedule = runCatching { ReportSchedule.valueOf(o.optString("reportSchedule")) }.getOrDefault(ReportSchedule.OFF),
             reportHour = o.optInt("reportHour", 17),
             showExtendedHours = o.optBoolean("showExtendedHours", true),
+            tapeOn = o.optBoolean("tapeOn", true),
+            tapeAllScreens = o.optBoolean("tapeAllScreens", true),
+            tapeSpeed = o.optInt("tapeSpeed", 1),
+            tapeCustom = o.optBoolean("tapeCustom", false),
+            tapeCount = o.optInt("tapeCount", 15),
+            tapeNyse = o.optJSONArray("tapeNyse")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: Tape.defaultNyse,
+            tapeNasdaq = o.optJSONArray("tapeNasdaq")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: Tape.defaultNasdaq,
             keys = o.optJSONObject("keys")?.let { k -> k.keys().asSequence().associateWith { k.optString(it) } } ?: emptyMap(),
         )
     }

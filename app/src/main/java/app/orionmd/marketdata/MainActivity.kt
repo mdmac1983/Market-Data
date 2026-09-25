@@ -56,6 +56,7 @@ import app.orionmd.marketdata.ui.MarketTheme
 import app.orionmd.marketdata.ui.WatermarkBackground
 import app.orionmd.marketdata.ui.components.LocalNav
 import app.orionmd.marketdata.ui.components.Nav
+import app.orionmd.marketdata.ui.components.TickerTape
 import app.orionmd.marketdata.ui.fmtTime
 import app.orionmd.marketdata.ui.screens.*
 import kotlinx.coroutines.delay
@@ -227,6 +228,7 @@ private fun AppRoot(intent: Intent?, consumed: () -> Unit) {
             containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onBackground,
             topBar = {
+                Column {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
@@ -266,6 +268,9 @@ private fun AppRoot(intent: Intent?, consumed: () -> Unit) {
                         }
                     },
                 )
+                val st by Prefs.settings.collectAsState()
+                if (st.tapeOn && (st.tapeAllScreens || route == "dashboard") && fullRoute?.startsWith("viewer") != true) TickerTape()
+                }
             },
             bottomBar = {
                 if (!wide) NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)) {
