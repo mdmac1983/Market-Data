@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="10dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+        <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@mipmap/ic_launcher_round" />
+        <TextView android:id="@+id/widget_title" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:textColor="#FFFFFF" android:textSize="13sp" android:textStyle="bold" android:text="Watchlist" />
+        <TextView android:id="@+id/widget_time" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#99FFFFFF" android:textSize="10sp" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/row0" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/sym0" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+        <TextView android:id="@+id/price0" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#DDFFFFFF" android:textSize="12sp" android:layout_marginEnd="8dp" />
+        <TextView android:id="@+id/chg0" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/row1" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/sym1" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+        <TextView android:id="@+id/price1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#DDFFFFFF" android:textSize="12sp" android:layout_marginEnd="8dp" />
+        <TextView android:id="@+id/chg1" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/row2" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/sym2" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+        <TextView android:id="@+id/price2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#DDFFFFFF" android:textSize="12sp" android:layout_marginEnd="8dp" />
+        <TextView android:id="@+id/chg2" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/row3" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/sym3" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+        <TextView android:id="@+id/price3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#DDFFFFFF" android:textSize="12sp" android:layout_marginEnd="8dp" />
+        <TextView android:id="@+id/chg3" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/row4" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/sym4" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+        <TextView android:id="@+id/price4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#DDFFFFFF" android:textSize="12sp" android:layout_marginEnd="8dp" />
+        <TextView android:id="@+id/chg4" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/row5" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/sym5" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+        <TextView android:id="@+id/price5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#DDFFFFFF" android:textSize="12sp" android:layout_marginEnd="8dp" />
+        <TextView android:id="@+id/chg5" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end" android:textSize="12sp" android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>

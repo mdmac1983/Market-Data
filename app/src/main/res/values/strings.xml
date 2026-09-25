@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Market_Data</string>
+    <string name="widget_desc">Your watchlist prices</string>
+</resources>
