@@ -308,6 +308,10 @@ object Reports {
             PdfWriter.Tile("Prev close", fmtPrice(quote.prevClose)),
             PdfWriter.Tile(if (crypto) "Market cap" else "Volume", if (crypto) fmtBig(quote.marketCap) else fmtBig(quote.volume)),
         ))
+        runCatching { Signals.forSymbol(sym) }.getOrNull()?.let { sig ->
+            w.h2("Overbought / oversold: ${sig.state.label}")
+            w.note("${sig.timeframe} · ${sig.reason()}")
+        }
         chart?.await()?.takeIf { it.size > 2 }?.let { c ->
             w.lineChart(c.map { it.c }, 170f, label = "Price · ${o.str("chartRange")} (${fmtPct((c.last().c / c.first().c - 1) * 100)})",
                 xLabels = fmtTime(c.first().t * 1000, "MMM d, yyyy") to fmtTime(c.last().t * 1000, "MMM d, yyyy"))

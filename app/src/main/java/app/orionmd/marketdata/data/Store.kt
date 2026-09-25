@@ -37,7 +37,12 @@ const val ETRADE_CRYPTO_FEE_PCT = 0.5
 
 const val ALL_PORTFOLIOS = "all"
 
-enum class AlertKind(val label: String) { ABOVE("Price above"), BELOW("Price below"), PCT_UP("Day change ≥ +%"), PCT_DOWN("Day change ≤ −%") }
+enum class AlertKind(val label: String) {
+    ABOVE("Price above"), BELOW("Price below"), PCT_UP("Day change ≥ +%"), PCT_DOWN("Day change ≤ −%"),
+    OVERBOUGHT("Becomes overbought (RSI ≥)"), OVERSOLD("Becomes oversold (RSI ≤)");
+
+    val isSignal get() = this == OVERBOUGHT || this == OVERSOLD
+}
 data class Alert(val id: String, val symbol: String, val kind: AlertKind, val value: Double, val enabled: Boolean = true, val lastFired: Long = 0, val repeat: Boolean = false)
 
 data class Trendline(val t1: Long, val p1: Double, val t2: Long, val p2: Double)
@@ -74,10 +79,11 @@ enum class DashboardCard(val title: String) {
     STATUS("Market status"), INDICES("Major indices"), FUTURES("Stock futures"), WATCHLIST("Watchlist"),
     MOVERS("Top movers"), SECTORS("Sector heatmap"), CRYPTO("Crypto"), FEAR_GREED("Fear & Greed"),
     PORTFOLIO("Portfolio"), FOREX("Forex"), COMMODITIES("Commodities"), YIELDS("Treasury yields"),
-    GLOBAL("Global markets"), NEWS("Headlines"), EARNINGS("Upcoming earnings"), RECENT("Recently viewed");
+    GLOBAL("Global markets"), NEWS("Headlines"), EARNINGS("Upcoming earnings"), RECENT("Recently viewed"),
+    SIGNALS("Overbought / oversold");
 
     companion object {
-        val defaults = listOf(STATUS, INDICES, WATCHLIST, PORTFOLIO, MOVERS, CRYPTO, FEAR_GREED, SECTORS, NEWS, FUTURES, COMMODITIES, YIELDS, FOREX).map { it.name }
+        val defaults = listOf(STATUS, INDICES, WATCHLIST, PORTFOLIO, SIGNALS, MOVERS, CRYPTO, FEAR_GREED, SECTORS, NEWS, FUTURES, COMMODITIES, YIELDS, FOREX).map { it.name }
     }
 }
 
@@ -105,6 +111,14 @@ object Store {
             val ids = cur.portfolios.map { it.id }.toSet()
             cur.copy(dashboard = dash, migrations = 1,
                 txns = cur.txns.map { if (it.portfolio in ids) it else it.copy(portfolio = cur.portfolios.first().id) })
+        }
+        if (_data.value.migrations < 2) update { cur ->
+            // v2: add the Overbought / oversold card after the portfolio card.
+            val dash = if (DashboardCard.SIGNALS.name in cur.dashboard) cur.dashboard else {
+                val i = cur.dashboard.indexOf(DashboardCard.PORTFOLIO.name).takeIf { it >= 0 } ?: cur.dashboard.indexOf(DashboardCard.WATCHLIST.name)
+                cur.dashboard.toMutableList().apply { add(if (i >= 0) i + 1 else size.coerceAtMost(3), DashboardCard.SIGNALS.name) }
+            }
+            cur.copy(dashboard = dash, migrations = 2)
         }
     }
 

@@ -107,6 +107,7 @@ fun WatchlistsScreen() {
             }
         }
         val q = rememberLive(list.symbols)
+        LaunchedEffect(list.symbols) { if (Prefs.current.showSignals) runCatching { Signals.forSymbols(list.symbols) } }
         if (editing) {
             var order by remember(list.id, list.symbols) { mutableStateOf(list.symbols) }
             val state = rememberLazyListState()
@@ -301,7 +302,7 @@ fun AlertsScreen() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).clickable { nav.symbol(a.symbol) }) {
                         Text(Catalog.display(a.symbol), fontWeight = FontWeight.Bold)
-                        Text("${a.kind.label} ${if (a.kind == AlertKind.ABOVE || a.kind == AlertKind.BELOW) fmtPrice(a.value) else fmtNum(a.value) + "%"}" + if (a.repeat) " · repeats" else "",
+                        Text("${a.kind.label} ${when { a.kind == AlertKind.ABOVE || a.kind == AlertKind.BELOW -> fmtPrice(a.value); a.kind.isSignal -> fmtNum(a.value, 0); else -> fmtNum(a.value) + "%" }}" + if (a.repeat) " · repeats" else "",
                             style = MaterialTheme.typography.bodySmall)
                         Text("Now ${fmtPrice(q[a.symbol]?.price)} (${fmtPct(q[a.symbol]?.changePct)})" + if (a.lastFired > 0) " · last fired ${fmtTime(a.lastFired)}" else "",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -316,17 +317,25 @@ fun AlertsScreen() {
 }
 
 @Composable
-fun AddAlertDialog(symbol: String?, price: Double?, onDismiss: () -> Unit) {
+fun AddAlertDialog(symbol: String?, price: Double?, initialKind: AlertKind = AlertKind.ABOVE, onDismiss: () -> Unit) {
     var sym by remember { mutableStateOf(symbol.orEmpty()) }
-    var kind by remember { mutableStateOf(AlertKind.ABOVE) }
-    var value by remember { mutableStateOf(price?.let { fmtPrice(it).replace(",", "") } ?: "") }
+    var kind by remember { mutableStateOf(initialKind) }
+    var value by remember { mutableStateOf(when (initialKind) { AlertKind.OVERBOUGHT -> "70"; AlertKind.OVERSOLD -> "30"; else -> price?.let { fmtPrice(it).replace(",", "") } ?: "" }) }
     var repeat by remember { mutableStateOf(false) }
     var pick by remember { mutableStateOf(false) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("New price alert") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { pick = true }, Modifier.fillMaxWidth()) { Text(if (sym.isBlank()) "Choose symbol" else Catalog.display(sym)) }
-            AlertKind.entries.forEach { k -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { kind = k }) { RadioButton(kind == k, { kind = k }); Text(k.label) } }
-            OutlinedTextField(value, { value = it }, label = { Text(if (kind == AlertKind.ABOVE || kind == AlertKind.BELOW) "Price" else "Percent") }, singleLine = true,
+            AlertKind.entries.forEach { k -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable {
+                kind = k
+                if (k == AlertKind.OVERBOUGHT) value = "70"; if (k == AlertKind.OVERSOLD) value = "30"
+            }) { RadioButton(kind == k, {
+                kind = k
+                if (k == AlertKind.OVERBOUGHT) value = "70"; if (k == AlertKind.OVERSOLD) value = "30"
+            }); Text(k.label) } }
+            if (kind.isSignal) Text("Uses the daily RSI (14). 70 / 30 are the usual overbought / oversold levels. Checked about every 15 minutes.",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(value, { value = it }, label = { Text(when { kind == AlertKind.ABOVE || kind == AlertKind.BELOW -> "Price"; kind.isSignal -> "RSI level"; else -> "Percent" }) }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
             Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(repeat, { repeat = it }); Text("Keep alert on after it fires (max every 6h)") }
         }

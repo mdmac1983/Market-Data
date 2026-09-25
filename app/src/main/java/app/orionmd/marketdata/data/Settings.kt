@@ -33,6 +33,8 @@ data class Settings(
     val showExtendedHours: Boolean = true,
     // Ticker tape (NYSE + NASDAQ rows under the top bar)
     val tapeOn: Boolean = true,
+    /** Overbought / oversold badges in watchlists and lists. */
+    val showSignals: Boolean = true,
     val tapeAllScreens: Boolean = true,
     val tapeSpeed: Int = 1,          // 0 slow, 1 normal, 2 fast
     val tapeCustom: Boolean = false, // false = most active, true = my lists
@@ -47,7 +49,7 @@ data class Settings(
         put("pinHash", pinHash); put("useBiometric", useBiometric); put("morningSummary", morningSummary)
         put("closingSummary", closingSummary); put("reportSchedule", reportSchedule.name); put("reportHour", reportHour)
         put("showExtendedHours", showExtendedHours)
-        put("tapeOn", tapeOn); put("tapeAllScreens", tapeAllScreens); put("tapeSpeed", tapeSpeed); put("tapeCustom", tapeCustom)
+        put("tapeOn", tapeOn); put("showSignals", showSignals); put("tapeAllScreens", tapeAllScreens); put("tapeSpeed", tapeSpeed); put("tapeCustom", tapeCustom)
         put("tapeCount", tapeCount); put("tapeNyse", org.json.JSONArray(tapeNyse)); put("tapeNasdaq", org.json.JSONArray(tapeNasdaq)); put("keys", JSONObject(keys as Map<*, *>))
     }
 
@@ -71,6 +73,7 @@ data class Settings(
             reportHour = o.optInt("reportHour", 17),
             showExtendedHours = o.optBoolean("showExtendedHours", true),
             tapeOn = o.optBoolean("tapeOn", true),
+            showSignals = o.optBoolean("showSignals", true),
             tapeAllScreens = o.optBoolean("tapeAllScreens", true),
             tapeSpeed = o.optInt("tapeSpeed", 1),
             tapeCustom = o.optBoolean("tapeCustom", false),

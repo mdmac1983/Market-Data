@@ -32,7 +32,7 @@ fun CryptoScreen() {
     var tab by rememberSaveableString("Top 100")
     val coins = rememberLoad("coins", refreshMs = 60_000) { Market.coins(1, 100) }
     Column(Modifier.fillMaxSize()) {
-        ChipRow(listOf("Top 100", "Heatmap", "Trending", "Overview"), tab, { tab = it }, Modifier.padding(horizontal = 12.dp))
+        ChipRow(listOf("Top 100", "Heatmap", "Trending", "Signals", "Overview"), tab, { tab = it }, Modifier.padding(horizontal = 12.dp))
         when (tab) {
             "Top 100" -> {
                 // stream prices for the top coins that trade on Coinbase
@@ -61,6 +61,7 @@ fun CryptoScreen() {
                 }
             }
             "Overview" -> CryptoOverview()
+            "Signals" -> LaunchedEffect(Unit) { tab = "Top 100"; nav.go("signals") }
         }
     }
 }
@@ -73,7 +74,11 @@ private fun CoinRow(c: Coin, live: Quote?, onClick: () -> Unit) {
         Text("${c.rank ?: ""}", Modifier.width(28.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         AsyncImage(c.image, null, Modifier.size(28.dp).clip(CircleShape))
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(c.symbol.uppercase(), fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(c.symbol.uppercase(), fontWeight = FontWeight.Bold)
+                val sig = remember(c.id, c.sparkline.size) { if (Prefs.current.showSignals) Signals.forCoin(c) else null }
+                if (sig != null) { Spacer(Modifier.width(6.dp)); SignalBadge(sig) }
+            }
             Text(c.name + (c.marketCap?.let { " · ${fmtBig(it)}" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (c.sparkline.size > 2) Sparkline(c.sparkline, Modifier.width(60.dp).height(26.dp).padding(horizontal = 4.dp))
@@ -227,11 +232,18 @@ fun NewsScreen() {
             } else Market.news(cat)
         }
         if (!Keys.has("MARKETAUX") && !Keys.has("NEWSAPI") && tab == "Top") {
-            Text("Tip: add a free NewsAPI or Marketaux key in Settings for more headlines and sentiment.",
+            Text("Tip: add a free NewsAPI or Marketaux key (More → API keys) for more headlines and sentiment.",
                 Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(d.loading && d.data != null, { Net.clearMemory(); d.reload() }, Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
             item { LoadContent(d, "No headlines right now") {} }
+            d.data?.takeIf { it.isNotEmpty() }?.let { list ->
+                item {
+                    Text("${list.size} headlines · ${list.map { it.source }.distinct().size} sources · pull down to refresh",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             items(d.data.orEmpty()) { n ->
                 SectionCard(modifier = Modifier.padding(vertical = 4.dp)) {
                     NewsRow(n)
@@ -246,6 +258,7 @@ fun NewsScreen() {
                     }
                 }
             }
+        }
         }
     }
 }

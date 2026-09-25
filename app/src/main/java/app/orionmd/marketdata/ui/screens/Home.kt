@@ -176,6 +176,7 @@ fun DashCard(c: DashboardCard) {
         }
         DashboardCard.FEAR_GREED -> FearGreedCard()
         DashboardCard.PORTFOLIO -> PortfolioMiniCard()
+        DashboardCard.SIGNALS -> SignalsDashCard()
         DashboardCard.FOREX -> SectionCard(c.title) { val q = rememberLive(Catalog.forex.take(6)); QuoteTileGrid(Catalog.forex.take(6), q) }
         DashboardCard.COMMODITIES -> SectionCard(c.title) { val s = Catalog.commodities.take(6); val q = rememberLive(s); QuoteTileGrid(s, q) }
         DashboardCard.YIELDS -> SectionCard(c.title, onTitleClick = { nav.go("economy") }) { val q = rememberLive(Catalog.yields); QuoteTileGrid(Catalog.yields, q, 4) }
@@ -352,7 +353,7 @@ private fun ToolLinks() {
     val nav = LocalNav.current
     SectionCard("Tools") {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Screener" to "screener", "Calendars" to "calendars", "Economy" to "economy", "Global" to "global", "Compare" to "compare", "Portfolio" to "portfolio")
+            listOf("Signals" to "signals", "Screener" to "screener", "Calendars" to "calendars", "Economy" to "economy", "Global" to "global", "Compare" to "compare", "Portfolio" to "portfolio")
                 .forEach { (l, r) -> AssistChip(onClick = { nav.go(r) }, label = { Text(l) }) }
         }
     }

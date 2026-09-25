@@ -43,6 +43,7 @@ import app.orionmd.marketdata.data.NewsItem
 import app.orionmd.marketdata.data.Quote
 import app.orionmd.marketdata.data.QuoteHub
 import app.orionmd.marketdata.data.SearchResult
+import app.orionmd.marketdata.data.Signals
 import app.orionmd.marketdata.ui.*
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
@@ -160,7 +161,9 @@ fun SectionCard(
                     modifier = Modifier.fillMaxWidth().padding(bottom = if (collapse?.collapsed == true) 0.dp else if (size == 2) 2.dp else 6.dp)) {
                     Text(title, style = when (size) { 2 -> MaterialTheme.typography.labelLarge; 1 -> MaterialTheme.typography.titleSmall; else -> MaterialTheme.typography.titleMedium },
                         fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).then(if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick) else Modifier))
+                        modifier = Modifier.weight(1f, fill = false).then(if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick) else Modifier))
+                    InfoIcon(title, if (size == 2) 13.dp else 15.dp)
+                    Spacer(Modifier.weight(1f))
                     if (collapse?.collapsed != true) action?.invoke()
                     if (collapse != null) Icon(
                         if (collapse.collapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess, if (collapse.collapsed) "Expand" else "Collapse",
@@ -216,8 +219,12 @@ fun QuoteRow(symbol: String, q: Quote?, onClick: () -> Unit, modifier: Modifier 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val size = LocalCardSize.current
+        val sig = if (app.orionmd.marketdata.data.Prefs.current.showSignals) Signals.flow.collectAsState().value[symbol] else null
         Column(Modifier.weight(1f)) {
-            Text(Catalog.display(symbol), fontWeight = FontWeight.Bold, style = if (size == 2) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(Catalog.display(symbol), fontWeight = FontWeight.Bold, style = if (size == 2) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge, maxLines = 1)
+                if (sig != null) { Spacer(Modifier.width(6.dp)); SignalBadge(sig) }
+            }
             if (size < 2) Text(q?.name ?: Catalog.nameOf(symbol) ?: "", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -257,7 +264,11 @@ fun StatTile(label: String, value: String, modifier: Modifier = Modifier, sub: S
         modifier.clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(if (LocalCardSize.current == 2) 6.dp else 10.dp),
     ) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false))
+            InfoIcon(label, 12.dp)
+        }
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
         if (sub != null) Text(sub, style = MaterialTheme.typography.labelMedium, color = subColor ?: MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
     }
@@ -344,8 +355,11 @@ fun KeyValueGrid(items: List<Pair<String, String>>, columns: Int = 2) {
         items.chunked(columns).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { (k, v) ->
-                    Row(Modifier.weight(1f)) {
-                        Text(k, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1)
+                    val help = LocalHelp.current
+                    val term = app.orionmd.marketdata.data.Glossary.find(k)
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text(k + if (term != null) " ⓘ" else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f).then(if (term != null) Modifier.clickable { help(listOf(k)) } else Modifier), maxLines = 1)
                         Text(v, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
                 }

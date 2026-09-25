@@ -95,14 +95,18 @@ fun SymbolScreen(symbol: String) {
                     val first = c.first().c; val last = q?.price ?: c.last().c
                     Text("$range change: ${fmtPct((last / first - 1) * 100)}", color = changeColor(last - first), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.Center) {
                     Indicator.entries.forEach { ind ->
                         FilterChip(ind in indicators, { indicators = if (ind in indicators) indicators - ind else indicators + ind },
                             { Text(ind.label) }, leadingIcon = { Dot(ind.color) })
                     }
+                    Box(Modifier.align(Alignment.CenterVertically)) {
+                        InfoIcon("Chart indicators", 18.dp, terms = listOf("SMA", "EMA", "Bollinger", "Volume", "RSI", "MACD", "Candlestick chart", "Trendline"))
+                    }
                 }
             }
         }
+        item { SignalCard(symbol, q?.price) }
         item {
             val sections = if (stock) listOf("Overview", "Analysts", "Insiders", "Dividends", "News", "Filings") + (if (type == AssetType.ETF) listOf("Holdings") else emptyList())
             else if (crypto) listOf("Overview", "News") else listOf("Overview", "News")

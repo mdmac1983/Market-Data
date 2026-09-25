@@ -29,7 +29,7 @@ import org.json.JSONObject
 private fun SettingRow(title: String, sub: String? = null, onClick: (() -> Unit)? = null, trailing: @Composable () -> Unit = {}) {
     Row(Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) { Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false)); InfoIcon(title, 14.dp) }
             if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         trailing()
@@ -72,6 +72,9 @@ fun SettingsScreen() {
                 Text("Refresh every ${s.refreshSec}s", style = MaterialTheme.typography.labelLarge)
                 ChipRow(listOf("10", "15", "30", "60", "120", "300"), s.refreshSec.toString(), { v -> Prefs.update { it.copy(refreshSec = v.toInt()) } })
                 Text("Faster refresh uses more of the free API limits (Finnhub 60/min).", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SettingRow("Overbought / oversold badges", "Show signal badges in watchlists and the crypto list") {
+                    Switch(s.showSignals, { v -> Prefs.update { it.copy(showSignals = v) } })
+                }
                 SettingRow("Pre-market & after-hours prices", "Shown on symbol pages") { Switch(s.showExtendedHours, { v -> Prefs.update { it.copy(showExtendedHours = v) } }) }
                 SettingRow("Offline cache", "${cacheSize / 1024} KB of saved data for offline use") {
                     TextButton(onClick = { Net.clearDisk(); cacheSize = Net.cacheSizeBytes() }) { Text("Clear") }
@@ -137,7 +140,8 @@ fun SettingsScreen() {
         }
         item {
             SectionCard("API keys") {
-                Text("Keys typed here override the ones built into the app. Free keys unlock extra features.", style = MaterialTheme.typography.bodySmall)
+                Text("Paste your free API keys (FRED, Financial Modeling Prep, Alpha Vantage, NewsAPI, Marketaux, Polygon…) and test them.", style = MaterialTheme.typography.bodySmall)
+                Button(onClick = { nav.go("apikeys") }, Modifier.fillMaxWidth().padding(vertical = 6.dp)) { Icon(Icons.Default.Key, null); Text("  Open API keys (paste & test)") }
                 Keys.all.forEach { k ->
                     val custom = s.keys[k.id]?.isNotBlank() == true
                     val status = when { custom -> "Your key"; k.builtIn.isNotBlank() -> "Built in"; else -> "Not set" }

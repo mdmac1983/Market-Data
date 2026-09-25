@@ -33,6 +33,7 @@ import app.orionmd.marketdata.data.Market
 import app.orionmd.marketdata.data.MarketClock
 import app.orionmd.marketdata.data.Prefs
 import app.orionmd.marketdata.data.Quote
+import app.orionmd.marketdata.data.Signals
 import app.orionmd.marketdata.data.ReportSchedule
 import app.orionmd.marketdata.data.Store
 import app.orionmd.marketdata.pdf.ReportKind
@@ -92,6 +93,8 @@ object AlertChecker {
                 AlertKind.BELOW -> q.price <= a.value
                 AlertKind.PCT_UP -> q.changePct >= a.value
                 AlertKind.PCT_DOWN -> q.changePct <= -a.value
+                AlertKind.OVERBOUGHT -> Signals.cached(a.symbol)?.let { it.rsi >= a.value } == true
+                AlertKind.OVERSOLD -> Signals.cached(a.symbol)?.let { it.rsi <= a.value } == true
             }
             // one notification per alert per 6 hours when repeating
             if (hit && (a.lastFired == 0L || (a.repeat && now - a.lastFired > 6 * 3600_000))) {
@@ -101,6 +104,8 @@ object AlertChecker {
                     AlertKind.BELOW -> "fell below ${fmtPrice(a.value)}"
                     AlertKind.PCT_UP -> "is up ${fmtPct(q.changePct)} today"
                     AlertKind.PCT_DOWN -> "is down ${fmtPct(q.changePct)} today"
+                    AlertKind.OVERBOUGHT -> "is overbought (RSI ${"%.0f".format(Signals.cached(a.symbol)?.rsi ?: 0.0)})"
+                    AlertKind.OVERSOLD -> "is oversold (RSI ${"%.0f".format(Signals.cached(a.symbol)?.rsi ?: 0.0)})"
                 }
                 Notifier.notify(ctx, Notifier.ALERTS, a.id.hashCode(), "${Catalog.display(a.symbol)} $cond",
                     "${q.name}: ${fmtPrice(q.price)} (${fmtPct(q.changePct)})",
@@ -115,7 +120,10 @@ object AlertChecker {
 
 class AlertWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
-        val syms = Store.current.alerts.filter { it.enabled }.map { it.symbol }.distinct()
+        val active = Store.current.alerts.filter { it.enabled }
+        val syms = active.map { it.symbol }.distinct()
+        // RSI alerts need fresh daily signals before checking.
+        active.filter { it.kind.isSignal }.map { it.symbol }.distinct().forEach { runCatching { Signals.forSymbol(it) } }
         if (syms.isNotEmpty()) AlertChecker.check(applicationContext, Market.quotes(syms))
         WatchlistWidget.refresh(applicationContext)
         return Result.success()

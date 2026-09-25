@@ -103,4 +103,5 @@ data class Exchange(val name: String, val country: String, val trust: Int?, val 
 data class CryptoGlobal(val totalCap: Double, val totalVol: Double, val btcDominance: Double, val ethDominance: Double, val capChangePct: Double, val activeCoins: Int)
 
 /** Screener row built from the stock universe. */
-data class UniverseRow(val symbol: String, val name: String, val sector: String, val quote: Quote?, val avgVol: Double?, val volRatio: Double?)
+data class UniverseRow(val symbol: String, val name: String, val sector: String, val quote: Quote?, val avgVol: Double?, val volRatio: Double?,
+                       val closes: List<Double> = emptyList())

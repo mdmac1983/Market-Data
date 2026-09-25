@@ -57,6 +57,9 @@ import app.orionmd.marketdata.ui.WatermarkBackground
 import app.orionmd.marketdata.ui.components.LocalNav
 import app.orionmd.marketdata.ui.components.Nav
 import app.orionmd.marketdata.ui.components.TickerTape
+import app.orionmd.marketdata.ui.components.LocalHelp
+import app.orionmd.marketdata.ui.components.HelpDialog
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import app.orionmd.marketdata.ui.fmtTime
 import app.orionmd.marketdata.ui.screens.*
 import kotlinx.coroutines.delay
@@ -158,6 +161,9 @@ private val moreItems = listOf(
     MoreItem("exchanges", "Crypto exchanges", Icons.Default.Storefront),
     MoreItem("notes", "Notes", Icons.Default.EditNote),
     MoreItem("reports", "PDF reports", Icons.Default.PictureAsPdf),
+    MoreItem("signals", "Overbought / oversold", Icons.Default.Speed),
+    MoreItem("glossary", "Glossary & help", Icons.AutoMirrored.Filled.HelpOutline),
+    MoreItem("apikeys", "API keys", Icons.Default.Key),
     MoreItem("backup", "Backup & export", Icons.Default.Backup),
     MoreItem("settings", "Settings", Icons.Default.Settings),
 )
@@ -171,6 +177,9 @@ private fun titleFor(route: String?, arg: String?): String = when {
     route.startsWith("filings") -> "SEC filings"
     route == "search" -> "Search"
     route == "import" -> "Import transactions"
+    route == "signals" -> "Overbought / oversold"
+    route == "glossary" -> "Glossary & help"
+    route == "apikeys" -> "API keys"
     else -> tabs.firstOrNull { it.route == route }?.label ?: moreItems.firstOrNull { it.route == route }?.label ?: "Market_Data"
 }
 
@@ -223,7 +232,9 @@ private fun AppRoot(intent: Intent?, consumed: () -> Unit) {
         consumed()
     }
 
-    CompositionLocalProvider(LocalNav provides navApi) {
+    var helpTerms by remember { mutableStateOf<List<String>?>(null) }
+    CompositionLocalProvider(LocalNav provides navApi, LocalHelp provides { t: List<String> -> helpTerms = t }) {
+        helpTerms?.let { HelpDialog(it) { helpTerms = null } }
         Scaffold(
             containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onBackground,
@@ -253,11 +264,11 @@ private fun AppRoot(intent: Intent?, consumed: () -> Unit) {
                         }
                     },
                     actions = {
-                        IconButton(onClick = { navApi.go("search") }) { Icon(Icons.Default.Search, "Search") }
+                        TopTip("Search stocks, ETFs, indexes and crypto") { IconButton(onClick = { navApi.go("search") }) { Icon(Icons.Default.Search, "Search") } }
                         if (fullRoute?.startsWith("pdf/") != true && fullRoute?.startsWith("viewer") != true) IconButton(onClick = {
                             val (k, a) = reportFor(route, arg)
                             navApi.go("pdf/${k.name}?arg=${Uri.encode(a ?: "")}")
-                        }) { Icon(Icons.Default.PictureAsPdf, "PDF report") }
+                        }) { TopTip("Make a PDF report of this screen") { Icon(Icons.Default.PictureAsPdf, "PDF report") } }
                         Box {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "More") }
                             DropdownMenu(menu, { menu = false }) {
@@ -329,6 +340,9 @@ private fun Routes(nav: NavHostController) {
         composable("exchanges") { ExchangesScreen() }
         composable("notes") { NotesScreen() }
         composable("settings") { SettingsScreen() }
+        composable("signals") { SignalsScreen() }
+        composable("glossary") { GlossaryScreen() }
+        composable("apikeys") { ApiKeysScreen() }
         composable("backup") { BackupScreen() }
         composable("reports") { ReportsScreen() }
         composable("movers/{kind}") { MoversScreen(it.arguments?.getString("kind") ?: "GAINERS") }
@@ -344,4 +358,10 @@ private fun Routes(nav: NavHostController) {
             PdfViewerScreen(Uri.decode(it.arguments?.getString("path").orEmpty()), it.arguments?.getString("temp") != "false")
         }
     }
+}
+
+/** Long-press tooltip explaining a top-bar button. */
+@Composable
+private fun TopTip(text: String, content: @Composable () -> Unit) {
+    TooltipBox(TooltipDefaults.rememberPlainTooltipPositionProvider(), { PlainTooltip { Text(text) } }, rememberTooltipState()) { content() }
 }

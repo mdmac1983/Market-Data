@@ -349,7 +349,7 @@ object Market {
             high = m.d("regularMarketDayHigh"), low = m.d("regularMarketDayLow"), prevClose = prev, volume = vol,
             high52 = m.d("fiftyTwoWeekHigh"), low52 = m.d("fiftyTwoWeekLow"), avgVolume = avg, source = "Yahoo",
             spark = candles.takeLast(30).map { it.c })
-        return UniverseRow(sym, name, sector, q, avg, if (vol != null && avg != null && avg > 0) vol / avg else null)
+        return UniverseRow(sym, name, sector, q, avg, if (vol != null && avg != null && avg > 0) vol / avg else null, candles.map { it.c })
     }
 
     suspend fun fmpScreener(sector: String?, minCap: Double?, maxCap: Double?): List<Quote> {
@@ -664,32 +664,43 @@ object Market {
     )
 
     /** Categories: general, markets, business, crypto, merger, forex. */
+    /** Runs one news source with a time limit, recording why it failed. */
+    private suspend fun source(name: String, errors: MutableList<String>, block: suspend () -> List<NewsItem>): List<NewsItem> =
+        try {
+            kotlinx.coroutines.withTimeoutOrNull(8_000) { block() } ?: emptyList<NewsItem>().also { synchronized(errors) { errors += "$name: timed out" } }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) { synchronized(errors) { errors += "$name: ${e.message ?: e.javaClass.simpleName}" }; emptyList() }
+
+    /** Categories: general, markets, business, crypto, merger, forex. Each source gets 8 seconds; slow ones are skipped. */
     suspend fun news(category: String): List<NewsItem> = coroutineScope {
+        val errors = mutableListOf<String>()
         val jobs = mutableListOf<kotlinx.coroutines.Deferred<List<NewsItem>>>()
         val fh = when (category) { "crypto" -> "crypto"; "merger" -> "merger"; "forex" -> "forex"; else -> "general" }
-        jobs += async {
-            runCatching {
+        if (Keys.has("FINNHUB")) jobs += async {
+            source("Finnhub", errors) {
                 JSONArray(Net.get("$finnhubBase/news?category=$fh&token=${Keys.finnhub}", ttlMs = 3 * 60_000)).objs().map {
                     NewsItem(it.s("headline"), it.s("summary"), it.s("source"), it.s("url"), it.s("image").ifBlank { null }, it.optLong("datetime"), it.s("related"), category = category)
                 }
-            }.getOrDefault(emptyList())
+            }
         }
-        rssFeeds[category]?.forEach { (name, url) -> jobs += async { runCatching { rss(url, name, category) }.getOrDefault(emptyList()) } }
+        (rssFeeds[category] ?: rssFeeds["general"]!!).forEach { (name, url) -> jobs += async { source(name, errors) { rss(url, name, category) } } }
         if (Keys.has("NEWSAPI") && category in setOf("general", "business", "markets")) jobs += async {
-            runCatching {
+            source("NewsAPI", errors) {
                 JSONObject(Net.get("https://newsapi.org/v2/top-headlines?category=business&country=us&pageSize=40&apiKey=${Keys.newsapi}", ttlMs = 10 * 60_000))
                     .getJSONArray("articles").objs().map {
                         NewsItem(it.s("title"), it.s("description"), it.optJSONObject("source")?.s("name").orEmpty(), it.s("url"),
                             it.s("urlToImage").ifBlank { null }, parseIso(it.s("publishedAt")), category = category)
                     }
-            }.getOrDefault(emptyList())
+            }
         }
         if (Keys.has("MARKETAUX")) jobs += async {
-            runCatching { marketaux(if (category == "crypto") "&entity_types=cryptocurrency" else "&countries=us", category) }.getOrDefault(emptyList())
+            source("Marketaux", errors) { marketaux(if (category == "crypto") "&entity_types=cryptocurrency" else "&countries=us", category) }
         }
-        jobs.awaitAll().flatten().filter { it.title.isNotBlank() }
+        val all = jobs.awaitAll().flatten().filter { it.title.isNotBlank() && it.url.isNotBlank() }
             .distinctBy { it.title.lowercase().filter { c -> c.isLetterOrDigit() }.take(60) }
             .sortedByDescending { it.time }.take(150)
+        if (all.isEmpty() && errors.isNotEmpty()) throw java.io.IOException("Couldn't load news. " + errors.joinToString("; ").take(300))
+        all
     }
 
     suspend fun companyNews(symbol: String): List<NewsItem> = coroutineScope {
@@ -702,7 +713,8 @@ object Market {
         }
         val b = async { runCatching { rss("https://feeds.finance.yahoo.com/rss/2.0/headline?s=${enc(symbol)}&region=US&lang=en-US", "Yahoo Finance", "company") }.getOrDefault(emptyList()) }
         val c = async { if (Keys.has("MARKETAUX")) runCatching { marketaux("&symbols=${enc(if (isCrypto(symbol)) cryptoBase(symbol) else symbol)}", "company") }.getOrDefault(emptyList()) else emptyList() }
-        (c.await() + a.await() + b.await()).distinctBy { it.title.lowercase().take(60) }.sortedByDescending { it.time }.take(60)
+        suspend fun <T> kotlinx.coroutines.Deferred<List<T>>.safe(): List<T> = kotlinx.coroutines.withTimeoutOrNull(10_000) { await() } ?: emptyList()
+        (c.safe() + a.safe() + b.safe()).filter { it.title.isNotBlank() }.distinctBy { it.title.lowercase().take(60) }.sortedByDescending { it.time }.take(60)
     }
 
     private suspend fun marketaux(filter: String, category: String): List<NewsItem> =
