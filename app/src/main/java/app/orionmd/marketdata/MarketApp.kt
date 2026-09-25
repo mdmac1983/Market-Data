@@ -17,6 +17,7 @@ import app.orionmd.marketdata.work.WatchlistWidget
 class MarketApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        CrashLog.install(this)
         Prefs.init(this)
         Store.init(this)
         Net.init(this)
@@ -34,4 +35,22 @@ class MarketApp : Application() {
             override fun onStop(owner: LifecycleOwner) = QuoteHub.stop()
         })
     }
+}
+
+/** Saves the last crash so the app can show the exact error on the next launch. */
+object CrashLog {
+    private fun file(ctx: android.content.Context) = java.io.File(ctx.filesDir, "last_crash.txt")
+
+    fun install(ctx: android.content.Context) {
+        val prev = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching {
+                val sw = java.io.StringWriter(); e.printStackTrace(java.io.PrintWriter(sw))
+                file(ctx).writeText("Market_Data ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL}\nThread: ${t.name}\n\n$sw")
+            }
+            prev?.uncaughtException(t, e)
+        }
+    }
+
+    fun take(ctx: android.content.Context): String? = file(ctx).takeIf { it.exists() }?.let { f -> f.readText().also { f.delete() } }
 }

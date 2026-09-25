@@ -15,6 +15,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
@@ -26,6 +28,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -61,17 +65,32 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
-        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         pendingIntent = intent
         setContent {
             val settings by Prefs.settings.collectAsState()
             MarketTheme(settings) {
                 var showSplash by rememberSaveable { mutableStateOf(savedInstanceState == null) }
                 LaunchedEffect(Unit) { delay(1600); showSplash = false }
+                var crash by remember { mutableStateOf(CrashLog.take(this@MainActivity)) }
                 Box(Modifier.fillMaxSize()) {
                     WatermarkBackground(settings.watermarkAlpha) { AppRoot(pendingIntent) { pendingIntent = null } }
                     AnimatedVisibility(showSplash, enter = fadeIn(), exit = fadeOut()) { Splash() }
+                }
+                crash?.let { text ->
+                    AlertDialog(
+                        onDismissRequest = { crash = null },
+                        title = { Text("Market_Data closed unexpectedly last time") },
+                        text = { Text(text.take(1500), style = MaterialTheme.typography.bodySmall, modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share error"))
+                                crash = null
+                            }) { Text("Share error") }
+                        },
+                        dismissButton = { TextButton(onClick = { crash = null }) { Text("Close") } },
+                    )
                 }
             }
         }
@@ -188,7 +207,7 @@ private fun AppRoot(intent: Intent?, consumed: () -> Unit) {
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                     navigationIcon = {
                         if (!isTab) IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                        else Image(painterResource(R.mipmap.ic_launcher_round), null, Modifier.padding(start = 12.dp, end = 4.dp).size(30.dp))
+                        else Image(painterResource(R.drawable.logo_square), null, Modifier.padding(start = 12.dp, end = 4.dp).size(30.dp).clip(CircleShape))
                     },
                     title = {
                         Column {

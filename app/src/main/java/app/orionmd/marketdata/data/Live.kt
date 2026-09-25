@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap
  * refresh interval and streams tick-by-tick prices over WebSockets (Finnhub for stocks, Coinbase for crypto).
  */
 object QuoteHub {
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, e -> android.util.Log.e("QuoteHub", "background error", e) })
     private val _quotes = MutableStateFlow<Map<String, Quote>>(emptyMap())
     val quotes: StateFlow<Map<String, Quote>> = _quotes
     private val _lastUpdate = MutableStateFlow(0L)
@@ -84,7 +84,7 @@ object QuoteHub {
             // keep a sparkline if the new source didn't provide one
             if (new.spark.isEmpty() && old != null && old.spark.isNotEmpty()) new.copy(spark = old.spark) else new
         }
-        onQuotes?.invoke(q)
+        runCatching { onQuotes?.invoke(q) }
     }
 
     internal fun tick(symbol: String, price: Double) {
