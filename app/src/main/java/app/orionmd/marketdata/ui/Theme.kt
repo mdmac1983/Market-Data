@@ -62,14 +62,26 @@ data class Spacing(val card: Dp, val row: Dp, val gap: Dp)
 val LocalSpacing = staticCompositionLocalOf { Spacing(14.dp, 10.dp, 12.dp) }
 val LocalDark = compositionLocalOf { true }
 
+/** 0 = large, 1 = medium, 2 = small cards. */
+val LocalCardSize = staticCompositionLocalOf { 0 }
+
+/** Lets a dashboard card show a collapse chevron in its title bar. */
+class CardCollapse(val collapsed: Boolean, val toggle: () -> Unit)
+val LocalCardCollapse = compositionLocalOf<CardCollapse?> { null }
+
 @Composable
 fun MarketTheme(settings: Settings, content: @Composable () -> Unit) {
     val dark = when (settings.theme) { ThemeMode.DARK -> true; ThemeMode.LIGHT -> false; ThemeMode.SYSTEM -> isSystemInDarkTheme() }
     val base = LocalDensity.current
-    val spacing = if (settings.compact) Spacing(10.dp, 6.dp, 8.dp) else Spacing(14.dp, 10.dp, 12.dp)
+    val spacing = when (settings.cardSize) {
+        2 -> Spacing(8.dp, 3.dp, 6.dp)
+        1 -> Spacing(11.dp, 6.dp, 9.dp)
+        else -> Spacing(14.dp, 10.dp, 12.dp)
+    }
     CompositionLocalProvider(
         LocalDensity provides Density(base.density, base.fontScale * settings.textScale),
         LocalSpacing provides spacing,
+        LocalCardSize provides settings.cardSize,
         LocalDark provides dark,
     ) {
         val scheme = if (dark) DarkScheme else LightScheme

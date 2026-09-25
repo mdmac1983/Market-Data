@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -144,21 +146,30 @@ fun SectionCard(
 ) {
     val sp = LocalSpacing.current
     val dark = LocalDark.current
+    val size = LocalCardSize.current
+    val collapse = LocalCardCollapse.current.takeIf { title != null }
     Card(
         modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(when (size) { 2 -> 10.dp; 1 -> 14.dp; else -> 18.dp }),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = if (dark) 0.78f else 0.70f)),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
     ) {
         Column(Modifier.padding(sp.card)) {
             if (title != null) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
-                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = if (collapse?.collapsed == true) 0.dp else if (size == 2) 2.dp else 6.dp)) {
+                    Text(title, style = when (size) { 2 -> MaterialTheme.typography.labelLarge; 1 -> MaterialTheme.typography.titleSmall; else -> MaterialTheme.typography.titleMedium },
+                        fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).then(if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick) else Modifier))
-                    action?.invoke()
+                    if (collapse?.collapsed != true) action?.invoke()
+                    if (collapse != null) Icon(
+                        if (collapse.collapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess, if (collapse.collapsed) "Expand" else "Collapse",
+                        Modifier.size(if (size == 2) 20.dp else 24.dp).clip(CircleShape).clickable(onClick = collapse.toggle),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
-            content()
+            if (collapse?.collapsed != true) CompositionLocalProvider(LocalCardCollapse provides null) { content() }
         }
     }
 }
@@ -173,8 +184,9 @@ fun ChipRow(options: List<String>, selected: String, onSelect: (String) -> Unit,
 @Composable
 fun ChangePill(pct: Double?, modifier: Modifier = Modifier) {
     val c by animateColorAsState(changeColor(pct), tween(300), label = "pill")
-    Box(modifier.clip(RoundedCornerShape(8.dp)).background(c.copy(alpha = 0.16f)).padding(horizontal = 8.dp, vertical = 3.dp)) {
-        Text(fmtPct(pct), color = c, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+    val small = LocalCardSize.current == 2
+    Box(modifier.clip(RoundedCornerShape(8.dp)).background(c.copy(alpha = 0.16f)).padding(horizontal = if (small) 5.dp else 8.dp, vertical = if (small) 1.dp else 3.dp)) {
+        Text(fmtPct(pct), color = c, fontWeight = FontWeight.SemiBold, style = if (small) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -203,13 +215,18 @@ fun QuoteRow(symbol: String, q: Quote?, onClick: () -> Unit, modifier: Modifier 
         modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(vertical = sp.row, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val size = LocalCardSize.current
         Column(Modifier.weight(1f)) {
-            Text(Catalog.display(symbol), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-            Text(q?.name ?: Catalog.nameOf(symbol) ?: "", style = MaterialTheme.typography.bodySmall,
+            Text(Catalog.display(symbol), fontWeight = FontWeight.Bold, style = if (size == 2) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge, maxLines = 1)
+            if (size < 2) Text(q?.name ?: Catalog.nameOf(symbol) ?: "", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (showSpark && q != null && q.spark.size > 2) Sparkline(q.spark, Modifier.width(56.dp).height(26.dp).padding(horizontal = 4.dp), baseline = q.prevClose)
-        Column(horizontalAlignment = Alignment.End, modifier = Modifier.widthIn(min = 88.dp)) {
+        if (showSpark && q != null && q.spark.size > 2) Sparkline(q.spark, Modifier.width(if (size == 2) 40.dp else 56.dp).height(if (size == 2) 18.dp else 26.dp).padding(horizontal = 4.dp), baseline = q.prevClose)
+        if (size == 2) {
+            FlashText(q?.price, fmtPrice(q?.price), MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.width(6.dp))
+            if (q != null) ChangePill(q.changePct, Modifier.widthIn(min = 64.dp)) else Text("—")
+        } else Column(horizontalAlignment = Alignment.End, modifier = Modifier.widthIn(min = 88.dp)) {
             FlashText(q?.price, fmtPrice(q?.price))
             if (q != null) ChangePill(q.changePct) else Text("—")
         }
@@ -238,7 +255,7 @@ fun FlashText(value: Double?, text: String, style: androidx.compose.ui.text.Text
 fun StatTile(label: String, value: String, modifier: Modifier = Modifier, sub: String? = null, subColor: Color? = null, onClick: (() -> Unit)? = null) {
     Column(
         modifier.clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(10.dp),
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(if (LocalCardSize.current == 2) 6.dp else 10.dp),
     ) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
@@ -251,26 +268,34 @@ fun QuoteTile(symbol: String, q: Quote?, modifier: Modifier = Modifier) {
     val nav = LocalNav.current
     Column(
         modifier.clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-            .clickable { nav.symbol(symbol) }.padding(10.dp),
+            .clickable { nav.symbol(symbol) }.padding(when (LocalCardSize.current) { 2 -> 5.dp; 1 -> 8.dp; else -> 10.dp }),
     ) {
         Text(Catalog.shortName(symbol), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        FlashText(q?.price, fmtPrice(q?.price), MaterialTheme.typography.titleMedium, FontWeight.Bold)
+        FlashText(q?.price, fmtPrice(q?.price), if (LocalCardSize.current == 2) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium, FontWeight.Bold)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(fmtPct(q?.changePct), color = changeColor(q?.changePct), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             if (q?.proxyNote != null) Text(" ·${q.proxyNote}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
-        if (q != null && q.spark.size > 2) Sparkline(q.spark, Modifier.fillMaxWidth().height(22.dp).padding(top = 4.dp), baseline = q.prevClose)
+        if (q != null && q.spark.size > 2 && LocalCardSize.current < 2) Sparkline(q.spark, Modifier.fillMaxWidth().height(if (LocalCardSize.current == 1) 16.dp else 22.dp).padding(top = 4.dp), baseline = q.prevClose)
     }
 }
 
 /** Grid of quote tiles, [columns] per row. */
 @Composable
 fun QuoteTileGrid(symbols: List<String>, quotes: Map<String, Quote>, columns: Int = 3) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        symbols.chunked(columns).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { s -> QuoteTile(s, quotes[s], Modifier.weight(1f)) }
-                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+    val size = LocalCardSize.current
+    val gap = if (size == 2) 5.dp else 8.dp
+    // Fit as many tiles per row as the width allows (more when cards are smaller).
+    BoxWithConstraints {
+        val minTile = when (size) { 2 -> 74.dp; 1 -> 88.dp; else -> 104.dp }
+        val fit = ((maxWidth + gap) / (minTile + gap)).toInt().coerceIn(2, 6)
+        val cols = (if (size == 0) minOf(columns, fit).coerceAtLeast(minOf(columns, 2)) else fit).coerceAtMost(maxOf(symbols.size, 1))
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            symbols.chunked(cols).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    row.forEach { s -> QuoteTile(s, quotes[s], Modifier.weight(1f)) }
+                    repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
         }
     }

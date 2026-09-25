@@ -147,7 +147,10 @@ fun PdfViewerScreen(path: String, temp: Boolean) {
     val doc by produceState<PdfDoc?>(null, path) {
         value = withContext(Dispatchers.IO) { runCatching { PdfDoc(file) }.getOrNull() }
     }
-    DisposableEffect(doc) { onDispose { doc?.close() } }
+    // Capture the document now: reading `doc` inside onDispose would see the *new* value and close the
+    // freshly opened PDF, which left every page blank.
+    val openDoc = doc
+    DisposableEffect(openDoc) { onDispose { openDoc?.close() } }
 
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         uri ?: return@rememberLauncherForActivityResult

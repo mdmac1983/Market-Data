@@ -27,16 +27,53 @@ data class PortfolioSummary(
     val realized: Double,
     val dividends: Double,
     val missingQuotes: Int,
+    val cash: CashSummary = CashSummary(),
 ) {
+    /** Value of the holdings alone, without cash. */
+    val investedValue get() = value - cash.balance
     val totalReturn get() = unrealized + realized + dividends
     val totalReturnPct get() = if (cost > 0) unrealized / cost * 100 else 0.0
     val dayPct get() = if (value - dayChange != 0.0) dayChange / (value - dayChange) * 100 else 0.0
 }
 
+/** Where a portfolio's cash came from and went. */
+data class CashSummary(
+    val balance: Double = 0.0,
+    val deposits: Double = 0.0,
+    val withdrawals: Double = 0.0,
+    val saleProceeds: Double = 0.0,
+    val dividends: Double = 0.0,
+    val spentOnBuys: Double = 0.0,
+    /** Part of buys that the cash balance didn't cover (money added from outside). */
+    val newMoney: Double = 0.0,
+)
+
 object PortfolioCalc {
+    /**
+     * Cash balance, in date order: sale proceeds (minus fees), dividends and deposits add cash;
+     * buys are paid from cash first (anything more counts as new money); withdrawals take cash out.
+     */
+    fun cash(txns: List<Txn>): CashSummary {
+        var bal = 0.0; var dep = 0.0; var wd = 0.0; var proceeds = 0.0; var divs = 0.0; var spent = 0.0; var fresh = 0.0
+        txns.sortedWith(compareBy({ it.date }, { if (it.kind == TxnKind.BUY || it.kind == TxnKind.WITHDRAWAL) 1 else 0 })).forEach { t ->
+            when (t.kind) {
+                TxnKind.DEPOSIT -> { bal += t.price; dep += t.price }
+                TxnKind.WITHDRAWAL -> { val w = minOf(t.price, bal); bal -= w; wd += w }
+                TxnKind.SELL -> { val p = t.qty * t.price - t.fees; bal += p; proceeds += p }
+                TxnKind.DIVIDEND -> { val d = if (t.qty > 0) t.qty * t.price else t.price; bal += d; divs += d }
+                TxnKind.BUY -> {
+                    val cost = t.qty * t.price + t.fees
+                    val use = minOf(bal, cost)
+                    bal -= use; spent += use; fresh += cost - use
+                }
+            }
+        }
+        return CashSummary(bal.coerceAtLeast(0.0), dep, wd, proceeds, divs, spent, fresh)
+    }
+
     /** Average-cost method. */
     fun holdings(txns: List<Txn>): List<Holding> =
-        txns.groupBy { it.symbol }.map { (sym, list) ->
+        txns.filter { !it.kind.isCash }.groupBy { it.symbol }.map { (sym, list) ->
             var qty = 0.0; var cost = 0.0; var realized = 0.0; var divs = 0.0
             list.sortedBy { it.date }.forEach { t ->
                 when (t.kind) {
@@ -48,6 +85,7 @@ object PortfolioCalc {
                         cost -= avg * q; qty -= q
                     }
                     TxnKind.DIVIDEND -> divs += if (t.qty > 0) t.qty * t.price else t.price
+                    TxnKind.DEPOSIT, TxnKind.WITHDRAWAL -> Unit
                 }
             }
             Holding(sym, qty, if (qty > 0) cost / qty else 0.0, cost, realized, divs)
@@ -63,7 +101,8 @@ object PortfolioCalc {
                 value += h.value(q)!!; day += h.dayChange(q)!!; unreal += h.unrealized(q)!!; cost += h.costBasis
             }
         }
-        return PortfolioSummary(hs, value, cost, day, unreal, hs.sumOf { it.realized }, hs.sumOf { it.dividends }, missing)
+        val cash = cash(txns)
+        return PortfolioSummary(hs, value + cash.balance, cost, day, unreal, hs.sumOf { it.realized }, hs.sumOf { it.dividends }, missing, cash)
     }
 
     private val dateFmts = listOf(
@@ -123,9 +162,11 @@ data class DraftTxn(
 ) {
     /** Problems that block importing this row; empty when it's ready. */
     fun problems(): List<String> = buildList {
-        if (!Importer.looksLikeSymbol(symbol)) add("Symbol missing or invalid")
         val p = Importer.num(price)
-        if (kind == TxnKind.DIVIDEND) { if (p == null || p <= 0) add("Enter the dividend amount") }
+        if (kind.isCash) { if (p == null || p <= 0) add("Enter the amount") }
+        else if (!Importer.looksLikeSymbol(symbol)) add("Symbol missing or invalid")
+        if (kind.isCash) Unit
+        else if (kind == TxnKind.DIVIDEND) { if (p == null || p <= 0) add("Enter the dividend amount") }
         else {
             val q = Importer.num(qty)
             if (q == null || q <= 0) add("Quantity must be more than 0")
@@ -136,8 +177,8 @@ data class DraftTxn(
 
     fun toTxn(portfolio: String): Txn? {
         if (problems().isNotEmpty()) return null
-        val q = if (kind == TxnKind.DIVIDEND) 0.0 else Importer.num(qty)!!
-        return Txn(Store.newId(), symbol.trim().uppercase(), kind, kotlin.math.abs(q), kotlin.math.abs(Importer.num(price)!!),
+        val q = if (kind.amountOnly) 0.0 else Importer.num(qty)!!
+        return Txn(Store.newId(), if (kind.isCash) CASH_SYMBOL else symbol.trim().uppercase(), kind, kotlin.math.abs(q), kotlin.math.abs(Importer.num(price)!!),
             kotlin.math.abs(Importer.num(fees) ?: 0.0), PortfolioCalc.parseDate(date) ?: System.currentTimeMillis(),
             note.ifBlank { "Imported" }, portfolio)
     }
@@ -298,7 +339,12 @@ object Importer {
         val amount = num(cell(ImportField.AMOUNT))
         var include = true
         var note = ""
+        val noSymbol = sym.isBlank() || sym == "--" || sym == CASH_SYMBOL || sym == "CASH"
+        val cashWords = listOf("deposit", "transfer", "ach", "wire", "contribution", "interest", "funds received", "journal", "withdraw", "disbursement", "eft")
+        val cashMove = noSymbol && cashWords.any { act.contains(it) }
         val kind = when {
+            cashMove && (act.contains("withdraw") || act.contains("disbursement") || (amount ?: 0.0) < 0) -> TxnKind.WITHDRAWAL
+            cashMove -> TxnKind.DEPOSIT
             act.contains("sell") || act.contains("sold") || act.contains("sale") -> TxnKind.SELL
             act.contains("reinvest") -> TxnKind.BUY
             act.contains("div") || act.contains("distribution") -> TxnKind.DIVIDEND
@@ -307,12 +353,14 @@ object Importer {
             else -> { include = false; note = "Unrecognized action \"${cell(ImportField.ACTION)}\""; TxnKind.BUY }
         }
         val qty = qn?.let { kotlin.math.abs(it) }
-        if (kind == TxnKind.DIVIDEND) price = amount?.let { kotlin.math.abs(it) } ?: price?.let { p0 -> qty?.takeIf { it > 0 }?.let { p0 * it } ?: p0 }
+        if (kind.isCash) { price = amount?.let { kotlin.math.abs(it) } ?: price; if (act.contains("interest")) note = "Interest" }
+        else if (kind == TxnKind.DIVIDEND) price = amount?.let { kotlin.math.abs(it) } ?: price?.let { p0 -> qty?.takeIf { it > 0 }?.let { p0 * it } ?: p0 }
         else if (price == null && amount != null && qty != null && qty > 0) price = kotlin.math.abs(amount) / qty
-        if (sym.isBlank()) { include = false; if (note.isBlank()) note = "No symbol (cash or fee row?)" }
+        if (kind.isCash) Unit
+        else if (sym.isBlank()) { include = false; if (note.isBlank()) note = "No symbol (cash or fee row?)" }
         else if (sym in setOf("CASH", "TOTAL", "TOTALS", "ACCOUNT", "SUBTOTAL") || sym.startsWith("TOTAL")) { include = false; note = "Cash/total row" }
         val d = cell(ImportField.DATE)
-        DraftTxn(nextId++, sym, kind, qty?.let { fmtNum(it) }.orEmpty(), price?.let { fmtNum(it) }.orEmpty(),
+        DraftTxn(nextId++, if (kind.isCash) "" else sym, kind, qty?.let { fmtNum(it) }.orEmpty(), price?.let { fmtNum(it) }.orEmpty(),
             (num(cell(ImportField.FEES)) to num(cell(ImportField.COMMISSION))).let { (f, c) ->
                 if (f == null && c == null) "" else fmtNum(kotlin.math.abs(f ?: 0.0) + kotlin.math.abs(c ?: 0.0))
             },
@@ -349,7 +397,7 @@ object Importer {
         var n = 0
         for (i in drafts.indices) {
             val d = drafts[i]
-            if (!isCryptoSymbol(d.symbol) || d.kind == TxnKind.DIVIDEND) continue
+            if (!isCryptoSymbol(d.symbol) || d.kind.amountOnly) continue
             if ((num(d.fees) ?: 0.0) > 0) continue
             val q = num(d.qty) ?: continue; val p = num(d.price) ?: continue
             drafts[i] = d.copy(fees = fmtNum(kotlin.math.round(q * p * pct) / 100.0), note = (d.note + " ${fmtNum(pct)}% crypto commission added").trim())

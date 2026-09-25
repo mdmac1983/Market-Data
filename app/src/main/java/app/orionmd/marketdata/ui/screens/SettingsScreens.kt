@@ -58,7 +58,10 @@ fun SettingsScreen() {
                 Slider(s.watermarkAlpha, { v -> Prefs.update { it.copy(watermarkAlpha = v) } }, valueRange = 0f..0.8f)
                 Text("Watermark in light mode: ${(s.lightWatermarkAlpha * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
                 Slider(s.lightWatermarkAlpha, { v -> Prefs.update { it.copy(lightWatermarkAlpha = v) } }, valueRange = 0f..1f)
-                SettingRow("Compact layout", "Tighter rows so more fits on screen") { Switch(s.compact, { v -> Prefs.update { it.copy(compact = v) } }) }
+                Text("Cards", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+                CardSizeControls(s)
+                Text("Smaller cards fit more on screen. On the dashboard you can also collapse a card (˄) or make it half width in Edit dashboard.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {

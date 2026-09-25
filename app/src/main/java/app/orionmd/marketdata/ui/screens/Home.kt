@@ -32,6 +32,7 @@ import java.time.ZonedDateTime
 @Composable
 fun DashboardScreen() {
     val data by Store.data.collectAsState()
+    val settings by Prefs.settings.collectAsState()
     var editing by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
@@ -41,23 +42,59 @@ fun DashboardScreen() {
 
     val cards = data.dashboard.mapNotNull { n -> DashboardCard.entries.firstOrNull { it.name == n } }
     PullToRefreshBox(refreshing, { refreshing = true }, Modifier.fillMaxSize()) {
-        LazyVerticalGrid(
-            GridCells.Adaptive(360.dp), Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(LocalSpacing.current.gap),
-            verticalArrangement = Arrangement.spacedBy(LocalSpacing.current.gap),
-        ) {
-            items(cards, key = { it.name }) { c -> key(refreshKey) { DashCard(c) } }
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                OutlinedButton(onClick = { editing = true }, Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Edit, null); Spacer(Modifier.width(8.dp)); Text("Edit dashboard")
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val cols = dashColumns(settings, maxWidth)
+            LazyVerticalGrid(
+                GridCells.Fixed(cols), Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(if (settings.cardSize == 2) 8.dp else 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(LocalSpacing.current.gap),
+                verticalArrangement = Arrangement.spacedBy(LocalSpacing.current.gap),
+            ) {
+                items(cards, key = { it.name }, span = { c -> GridItemSpan(if (cols > 1 && c.name in data.dashHalf) 1 else maxLineSpan) }) { c ->
+                    val collapsed = c.name in data.dashCollapsed
+                    CompositionLocalProvider(LocalCardCollapse provides CardCollapse(collapsed) {
+                        Store.update { d -> d.copy(dashCollapsed = if (c.name in d.dashCollapsed) d.dashCollapsed - c.name else d.dashCollapsed + c.name) }
+                    }) { key(refreshKey) { DashCard(c) } }
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        CardSizeControls(settings)
+                        OutlinedButton(onClick = { editing = true }, Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Edit, null); Spacer(Modifier.width(8.dp)); Text("Edit dashboard")
+                        }
+                    }
                 }
             }
         }
     }
 }
 
+/** Columns for the dashboard grid: the user's choice, or automatic from width and card size. */
+fun dashColumns(s: Settings, width: androidx.compose.ui.unit.Dp): Int {
+    if (s.dashColumns > 0) return s.dashColumns
+    val min = when (s.cardSize) { 2 -> 170.dp; 1 -> 300.dp; else -> 360.dp }
+    return ((width - 24.dp) / min).toInt().coerceIn(1, 4)
+}
+
+/** Card size (Large / Medium / Small) and column count, shown on the dashboard and in Settings. */
+@Composable
+fun CardSizeControls(s: Settings) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Card size", Modifier.width(80.dp), style = MaterialTheme.typography.labelLarge)
+        ChipRow(listOf("Large", "Medium", "Small"), listOf("Large", "Medium", "Small")[s.cardSize.coerceIn(0, 2)],
+            { v -> Prefs.update { it.copy(cardSize = listOf("Large", "Medium", "Small").indexOf(v)) } })
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Columns", Modifier.width(80.dp), style = MaterialTheme.typography.labelLarge)
+        ChipRow(listOf("Auto", "1", "2", "3"), if (s.dashColumns == 0) "Auto" else s.dashColumns.toString(),
+            { v -> Prefs.update { it.copy(dashColumns = if (v == "Auto") 0 else v.toInt()) } })
+    }
+}
+
 @Composable
 private fun DashboardEditor(current: List<String>, done: () -> Unit) {
+    val data by Store.data.collectAsState()
+    val settings by Prefs.settings.collectAsState()
     var list by remember { mutableStateOf(current) }
     val state = rememberLazyListState()
     val reorder = rememberReorderableLazyListState(state) { from, to ->
@@ -65,20 +102,35 @@ private fun DashboardEditor(current: List<String>, done: () -> Unit) {
         if (f >= 0 && t >= 0) list = list.toMutableList().apply { add(t, removeAt(f)) }
     }
     val hidden = DashboardCard.entries.filter { it.name !in list }
+    fun toggle(sel: (AppData) -> List<String>, set: (AppData, List<String>) -> AppData, name: String) =
+        Store.update { d -> set(d, if (name in sel(d)) sel(d) - name else sel(d) + name) }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Drag ≡ to reorder. Tap − to remove.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text("Drag ≡ to reorder, − to remove, ◧ for half width, ˄ to collapse.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { list = DashboardCard.defaults }) { Text("Reset") }
             Button(onClick = { Store.update { it.copy(dashboard = list) }; done() }) { Text("Done") }
         }
+        CardSizeControls(settings)
         LazyColumn(Modifier.weight(1f), state = state, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(list, key = { it }) { name ->
                 ReorderableItem(reorder, key = name) { dragging ->
                     val card = DashboardCard.valueOf(name)
+                    val half = name in data.dashHalf; val collapsed = name in data.dashCollapsed
                     Surface(tonalElevation = if (dragging) 8.dp else 1.dp, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
-                        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = {}, modifier = Modifier.draggableHandle()) { Icon(Icons.Default.DragHandle, "Drag") }
-                            Text(card.title, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                            Column(Modifier.weight(1f)) {
+                                Text(card.title, fontWeight = FontWeight.SemiBold)
+                                Text(listOf(if (half) "Half width" else "Full width", if (collapsed) "collapsed" else "").filter { it.isNotBlank() }.joinToString(" · "),
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconToggleButton(half, { toggle({ it.dashHalf }, { d, l -> d.copy(dashHalf = l) }, name) }) {
+                                Icon(Icons.Default.VerticalSplit, "Half width", tint = if (half) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconToggleButton(collapsed, { toggle({ it.dashCollapsed }, { d, l -> d.copy(dashCollapsed = l) }, name) }) {
+                                Icon(if (collapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess, "Collapse",
+                                    tint = if (collapsed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             IconButton(onClick = { list = list - name }) { Icon(Icons.Default.RemoveCircleOutline, "Remove", tint = Down) }
                         }
                     }

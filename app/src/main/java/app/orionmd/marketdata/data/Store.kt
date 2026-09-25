@@ -10,7 +10,16 @@ import java.util.UUID
 
 data class Watchlist(val id: String, val name: String, val symbols: List<String>)
 
-enum class TxnKind { BUY, SELL, DIVIDEND }
+enum class TxnKind(val label: String) {
+    BUY("Buy"), SELL("Sell"), DIVIDEND("Dividend"), DEPOSIT("Deposit"), WITHDRAWAL("Withdraw");
+
+    /** Cash-only transactions (no symbol); the amount is stored in [Txn.price]. */
+    val isCash get() = this == DEPOSIT || this == WITHDRAWAL
+    /** Kinds entered as a single dollar amount rather than quantity × price. */
+    val amountOnly get() = this == DIVIDEND || isCash
+}
+
+const val CASH_SYMBOL = "CASH"
 data class Txn(val id: String, val symbol: String, val kind: TxnKind, val qty: Double, val price: Double, val fees: Double, val date: Long, val note: String = "", val portfolio: String = "main")
 
 /** A named portfolio (like a watchlist). Transactions point to it by [id]. */
@@ -51,6 +60,10 @@ data class AppData(
     /** Which portfolio the dashboard card shows: a portfolio id or [ALL_PORTFOLIOS]. */
     val dashPortfolio: String = ALL_PORTFOLIOS,
     val migrations: Int = 0,
+    /** Dashboard cards shown at half width when the dashboard has 2+ columns. */
+    val dashHalf: List<String> = listOf("FEAR_GREED", "FUTURES", "YIELDS", "FOREX", "COMMODITIES", "STATUS"),
+    /** Dashboard cards collapsed to their title bar. */
+    val dashCollapsed: List<String> = emptyList(),
 ) {
     fun txnsOf(portfolioId: String): List<Txn> = if (portfolioId == ALL_PORTFOLIOS) txns else txns.filter { it.portfolio == portfolioId }
     fun portfolioName(id: String): String = if (id == ALL_PORTFOLIOS) "All portfolios" else portfolios.firstOrNull { it.id == id }?.name ?: "Portfolio"
@@ -147,6 +160,7 @@ object Store {
         put("portfolios", JSONArray(d.portfolios.map { JSONObject().put("id", it.id).put("name", it.name).put("cryptoFeePct", it.cryptoFeePct) }))
         put("dashPortfolio", d.dashPortfolio)
         put("migrations", d.migrations)
+        put("dashHalf", JSONArray(d.dashHalf)); put("dashCollapsed", JSONArray(d.dashCollapsed))
     }
 
     private fun JSONArray?.strings(): List<String> = this?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
@@ -195,6 +209,8 @@ object Store {
                 .filter { it.id.isNotBlank() }.ifEmpty { def.portfolios },
             dashPortfolio = o.optString("dashPortfolio", ALL_PORTFOLIOS).ifBlank { ALL_PORTFOLIOS },
             migrations = o.optInt("migrations", 0),
+            dashHalf = o.optJSONArray("dashHalf")?.strings() ?: def.dashHalf,
+            dashCollapsed = o.optJSONArray("dashCollapsed").strings(),
         )
     }
 }

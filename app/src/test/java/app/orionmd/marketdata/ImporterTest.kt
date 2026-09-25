@@ -39,8 +39,8 @@ class ImporterTest {
         assertEquals(TxnKind.DIVIDEND, d[1].kind); assertEquals("12.34", d[1].price); assertTrue(d[1].problems().isEmpty())
         assertEquals(TxnKind.SELL, d[2].kind); assertEquals("3", d[2].qty); assertEquals("0.67", d[2].fees) // commission + fees
         assertEquals(TxnKind.BUY, d[3].kind)
-        assertTrue(!d[4].include) // cash transfer row without a symbol is excluded
-        assertEquals(4, d.count { it.include && it.problems().isEmpty() })
+        assertEquals(TxnKind.DEPOSIT, d[4].kind); assertEquals("1000", d[4].price) // bank transfer in → cash deposit
+        assertEquals(5, d.count { it.include && it.problems().isEmpty() })
     }
 
     @Test fun schwab() {
@@ -70,7 +70,7 @@ class ImporterTest {
         val d = Importer.drafts(p, p.mapping)
         assertEquals(TxnKind.BUY, d[0].kind); assertEquals("2026-09-15", d[0].date)
         assertEquals(TxnKind.DIVIDEND, d[1].kind)
-        assertTrue(!d[2].include)
+        assertEquals(TxnKind.DEPOSIT, d[2].kind); assertEquals("500", d[2].price)
     }
 
     @Test fun europeanSemicolon() {
@@ -129,8 +129,9 @@ class ImporterTest {
         assertEquals(TxnKind.DIVIDEND, d[1].kind); assertEquals("12.34", d[1].price)
         assertEquals(TxnKind.SELL, d[2].kind); assertEquals("3", d[2].qty); assertEquals("0.65", d[2].fees)
         assertEquals(TxnKind.BUY, d[3].kind)
-        assertTrue(!d[4].include); assertTrue(!d[5].include)
-        assertEquals(4, d.count { it.include && it.problems().isEmpty() })
+        assertEquals(TxnKind.DEPOSIT, d[4].kind); assertEquals("1000", d[4].price)
+        assertEquals(TxnKind.DEPOSIT, d[5].kind); assertEquals("Interest", d[5].note)
+        assertEquals(6, d.count { it.include && it.problems().isEmpty() })
     }
 
     @Test fun etradeOldFormat() {
@@ -180,5 +181,25 @@ class ImporterTest {
         assertEquals("7.5", d[1].fees)  // 0.5% of $1,500
         assertEquals("0", d[2].fees)    // stock untouched
         assertEquals("BTC", Importer.normalizeCrypto("BTC")) // plain BTC without a crypto hint stays as typed
+    }
+
+    @Test fun cashFromSales() {
+        fun t(kind: TxnKind, sym: String, q: Double, p: Double, day: Long, fees: Double = 0.0) =
+            app.orionmd.marketdata.data.Txn("x$day", sym, kind, q, p, fees, day * 86_400_000L)
+        val txns = listOf(
+            t(TxnKind.BUY, "AAPL", 10.0, 100.0, 1),          // $1,000 of new money (no cash yet)
+            t(TxnKind.SELL, "AAPL", 4.0, 150.0, 2, 1.0),     // +$599 proceeds
+            t(TxnKind.DIVIDEND, "AAPL", 0.0, 6.0, 3),        // +$6
+            t(TxnKind.BUY, "MSFT", 1.0, 400.0, 4),           // paid from cash: 605 → 205
+            t(TxnKind.DEPOSIT, "CASH", 0.0, 1000.0, 5),      // +$1,000
+            t(TxnKind.WITHDRAWAL, "CASH", 0.0, 200.0, 6),    // −$200
+        )
+        val c = app.orionmd.marketdata.data.PortfolioCalc.cash(txns)
+        assertEquals(1005.0, c.balance, 1e-9)
+        assertEquals(599.0, c.saleProceeds, 1e-9)
+        assertEquals(1000.0, c.newMoney, 1e-9)
+        val h = app.orionmd.marketdata.data.PortfolioCalc.holdings(txns)
+        assertEquals(listOf("AAPL", "MSFT"), h.map { it.symbol }) // no CASH holding
+        assertEquals(6.0, h.first().qty, 1e-9)
     }
 }

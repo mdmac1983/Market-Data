@@ -17,6 +17,10 @@ data class Settings(
     val streaming: Boolean = true,
     val textScale: Float = 1f,
     val compact: Boolean = false,
+    /** 0 = large, 1 = medium, 2 = small cards. */
+    val cardSize: Int = 0,
+    /** Dashboard columns; 0 = automatic. */
+    val dashColumns: Int = 0,
     val watermarkAlpha: Float = 0.35f,
     val lightWatermarkAlpha: Float = 0.6f,
     val lockPortfolio: Boolean = false,
@@ -39,7 +43,7 @@ data class Settings(
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("theme", theme.name); put("refreshSec", refreshSec); put("streaming", streaming); put("textScale", textScale.toDouble())
-        put("compact", compact); put("watermarkAlpha", watermarkAlpha.toDouble()); put("lightWatermarkAlpha", lightWatermarkAlpha.toDouble()); put("lockPortfolio", lockPortfolio)
+        put("compact", compact); put("cardSize", cardSize); put("dashColumns", dashColumns); put("watermarkAlpha", watermarkAlpha.toDouble()); put("lightWatermarkAlpha", lightWatermarkAlpha.toDouble()); put("lockPortfolio", lockPortfolio)
         put("pinHash", pinHash); put("useBiometric", useBiometric); put("morningSummary", morningSummary)
         put("closingSummary", closingSummary); put("reportSchedule", reportSchedule.name); put("reportHour", reportHour)
         put("showExtendedHours", showExtendedHours)
@@ -54,6 +58,8 @@ data class Settings(
             streaming = o.optBoolean("streaming", true),
             textScale = o.optDouble("textScale", 1.0).toFloat(),
             compact = o.optBoolean("compact", false),
+            cardSize = o.optInt("cardSize", if (o.optBoolean("compact", false)) 1 else 0).coerceIn(0, 2),
+            dashColumns = o.optInt("dashColumns", 0).coerceIn(0, 4),
             watermarkAlpha = o.optDouble("watermarkAlpha", 0.35).toFloat(),
             lightWatermarkAlpha = o.optDouble("lightWatermarkAlpha", 0.6).toFloat(),
             lockPortfolio = o.optBoolean("lockPortfolio", false),

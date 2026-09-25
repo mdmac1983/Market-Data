@@ -81,6 +81,7 @@ fun PortfolioScreen() {
     val s = PortfolioCalc.summary(txns, q)
     var txnDialog by remember { mutableStateOf<Txn?>(null) }
     var addTxn by remember { mutableStateOf(false) }
+    var cashDialog by remember { mutableStateOf<TxnKind?>(null) }
     var dialog by remember { mutableStateOf<String?>(null) } // new | rename | delete
     var menu by remember { mutableStateOf(false) }
     var tab by rememberSaveableString("Holdings")
@@ -125,6 +126,11 @@ fun PortfolioScreen() {
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatTile("Cash", fmtMoney(s.cash.balance), Modifier.weight(1f), "tap to add or withdraw", onClick = { cashDialog = TxnKind.DEPOSIT })
+                        StatTile("Invested", fmtMoney(s.investedValue), Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { addTxn = true }, Modifier.weight(1f)) { Icon(Icons.Default.Add, null); Text(" Transaction") }
                         OutlinedButton(onClick = { nav.go("import?pf=${if (all) d.portfolios.first().id else sel}") }, Modifier.weight(1f)) {
                             Icon(Icons.Default.UploadFile, null); Text(" Import")
@@ -132,9 +138,10 @@ fun PortfolioScreen() {
                     }
                 }
             }
-            if (open.isNotEmpty()) item {
+            if (open.isNotEmpty() || s.cash.balance > 0) item {
                 SectionCard("Allocation") {
-                    val slices = open.map { Catalog.display(it.symbol) to (it.value(q[it.symbol]) ?: it.costBasis) }.sortedByDescending { it.second }
+                    val slices = (open.map { Catalog.display(it.symbol) to (it.value(q[it.symbol]) ?: it.costBasis) } +
+                        listOfNotNull(s.cash.balance.takeIf { it > 0.005 }?.let { "Cash" to it })).sortedByDescending { it.second }
                     val top = slices.take(9) + if (slices.size > 9) listOf("Other" to slices.drop(9).sumOf { it.second }) else emptyList()
                     val tot = top.sumOf { it.second }.takeIf { it > 0 } ?: 1.0
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -153,6 +160,7 @@ fun PortfolioScreen() {
             item { ChipRow(listOf("Holdings", "Transactions", "Dividends", "Closed"), tab, { tab = it }) }
             when (tab) {
                 "Holdings" -> {
+                    if (txns.isNotEmpty()) item(key = "__cash") { CashCard(s.cash, onDeposit = { cashDialog = TxnKind.DEPOSIT }, onWithdraw = { cashDialog = TxnKind.WITHDRAWAL }) }
                     if (open.isEmpty()) item {
                         SectionCard {
                             Text("No holdings yet.", fontWeight = FontWeight.Bold)
@@ -196,6 +204,7 @@ fun PortfolioScreen() {
         }
     }
     if (addTxn) TxnDialog(null, if (all) d.portfolios.first().id else sel) { addTxn = false }
+    cashDialog?.let { k -> TxnDialog(null, if (all) d.portfolios.first().id else sel, initialKind = k) { cashDialog = null } }
     txnDialog?.let { t -> TxnDialog(t, t.portfolio) { txnDialog = null } }
     when (dialog) {
         "new" -> NewPortfolioDialog(onDismiss = { dialog = null }) { name -> sel = createPortfolio(name); dialog = null }
@@ -237,6 +246,27 @@ fun PortfolioScreen() {
 fun fmtQty(q: Double) = Importer.fmtNum(q)
 
 @Composable
+private fun CashCard(c: CashSummary, onDeposit: () -> Unit, onWithdraw: () -> Unit) {
+    SectionCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.AccountBalanceWallet, null, tint = Cyan)
+            Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                Text("Cash", fontWeight = FontWeight.Bold)
+                Text("Sales ${fmtMoney(c.saleProceeds)} · dividends ${fmtMoney(c.dividends)} · deposits ${fmtMoney(c.deposits)}",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (c.spentOnBuys > 0 || c.withdrawals > 0) Text("Used for buys ${fmtMoney(c.spentOnBuys)} · withdrawn ${fmtMoney(c.withdrawals)}",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(fmtMoney(c.balance), fontWeight = FontWeight.SemiBold)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+            OutlinedButton(onClick = onDeposit, Modifier.weight(1f)) { Text("+ Deposit") }
+            OutlinedButton(onClick = onWithdraw, Modifier.weight(1f), enabled = c.balance > 0) { Text("− Withdraw") }
+        }
+    }
+}
+
+@Composable
 fun CryptoFeeDialog(p: PortfolioDef, onDismiss: () -> Unit, onSave: (Double) -> Unit) {
     var choice by remember { mutableStateOf(when (p.cryptoFeePct) { 0.0 -> "None"; ETRADE_CRYPTO_FEE_PCT -> "E*TRADE"; else -> "Custom" }) }
     var custom by remember { mutableStateOf(if (p.cryptoFeePct > 0) Importer.fmtNum(p.cryptoFeePct) else "") }
@@ -259,23 +289,31 @@ fun CryptoFeeDialog(p: PortfolioDef, onDismiss: () -> Unit, onSave: (Double) -> 
 @Composable
 private fun TxnRow(t: Txn, portfolioName: String?, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Pill(t.kind.name, when (t.kind) { TxnKind.BUY -> Up; TxnKind.SELL -> Down; TxnKind.DIVIDEND -> Gold })
+        Pill(t.kind.label.uppercase(), when (t.kind) { TxnKind.BUY -> Up; TxnKind.SELL -> Down; TxnKind.DIVIDEND -> Gold; TxnKind.DEPOSIT -> Cyan; TxnKind.WITHDRAWAL -> Indigo })
         Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(Catalog.display(t.symbol), fontWeight = FontWeight.Bold)
+            Text(if (t.kind.isCash) "Cash" else Catalog.display(t.symbol), fontWeight = FontWeight.Bold)
             Text(listOfNotNull(PortfolioCalc.fmtDate(t.date), portfolioName, t.note.ifBlank { null }).joinToString(" · "), style = MaterialTheme.typography.labelSmall,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(if (t.kind == TxnKind.DIVIDEND) fmtMoney(if (t.qty > 0) t.qty * t.price else t.price) else "${fmtQty(t.qty)} @ ${fmtPrice(t.price)}")
+        Column(horizontalAlignment = Alignment.End) {
+            Text(when {
+                t.kind.isCash -> (if (t.kind == TxnKind.DEPOSIT) "+" else "−") + fmtMoney(t.price)
+                t.kind == TxnKind.DIVIDEND -> fmtMoney(if (t.qty > 0) t.qty * t.price else t.price)
+                else -> "${fmtQty(t.qty)} @ ${fmtPrice(t.price)}"
+            })
+            if (t.kind == TxnKind.SELL) Text("+${fmtMoney(t.qty * t.price - t.fees)} to cash", style = MaterialTheme.typography.labelSmall, color = Up)
+        }
         Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 /** Add a new transaction, or edit/delete [existing]. */
 @Composable
-private fun TxnDialog(existing: Txn?, defaultPortfolio: String, onDismiss: () -> Unit) {
+private fun TxnDialog(existing: Txn?, defaultPortfolio: String, initialKind: TxnKind = TxnKind.BUY, onDismiss: () -> Unit) {
     val d by Store.data.collectAsState()
     var symbol by remember { mutableStateOf(existing?.symbol.orEmpty()) }
-    var kind by remember { mutableStateOf(existing?.kind ?: TxnKind.BUY) }
+    var kind by remember { mutableStateOf(existing?.kind ?: initialKind) }
+    val ctx = LocalContext.current
     var qty by remember { mutableStateOf(existing?.qty?.takeIf { it > 0 }?.let { fmtQty(it) }.orEmpty()) }
     var price by remember { mutableStateOf(existing?.price?.let { fmtQty(it) }.orEmpty()) }
     var fees by remember { mutableStateOf(existing?.fees?.takeIf { it > 0 }?.let { fmtQty(it) }.orEmpty()) }
@@ -284,19 +322,25 @@ private fun TxnDialog(existing: Txn?, defaultPortfolio: String, onDismiss: () ->
     var pf by remember { mutableStateOf(defaultPortfolio.takeIf { id -> d.portfolios.any { it.id == id } } ?: d.portfolios.first().id) }
     var pick by remember { mutableStateOf(false) }
     var err by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(symbol) { if (existing == null && symbol.isNotBlank() && price.isBlank()) Market.quote(symbol)?.let { price = fmtQty(it.price) } }
+    LaunchedEffect(symbol) { if (existing == null && !kind.isCash && symbol.isNotBlank() && price.isBlank()) Market.quote(symbol)?.let { price = fmtQty(it.price) } }
     val pfDef = d.portfolios.firstOrNull { it.id == pf }
-    val autoFee = pfDef?.takeIf { it.cryptoFeePct > 0 && Importer.isCryptoSymbol(symbol) && kind != TxnKind.DIVIDEND }?.let { p0 ->
+    val autoFee = pfDef?.takeIf { it.cryptoFeePct > 0 && Importer.isCryptoSymbol(symbol) && !kind.amountOnly }?.let { p0 ->
         val qn = Importer.num(qty); val pn = Importer.num(price)
         if (qn != null && pn != null) p0.cryptoFee(qn, pn) else null
     }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(if (existing == null) "Add transaction" else "Edit transaction") }, text = {
         Column(Modifier.verticalScrollSafe(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { pick = true }, Modifier.fillMaxWidth()) { Text(if (symbol.isBlank()) "Choose symbol" else Catalog.display(symbol)) }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { TxnKind.entries.forEach { k -> FilterChip(kind == k, { kind = k }, { Text(k.name.lowercase().replaceFirstChar { it.uppercase() }) }) } }
-            if (kind != TxnKind.DIVIDEND) OutlinedTextField(qty, { qty = it }, label = { Text("Quantity") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-            OutlinedTextField(price, { price = it }, label = { Text(if (kind == TxnKind.DIVIDEND) "Total dividend amount" else "Price per share") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-            if (kind != TxnKind.DIVIDEND) OutlinedTextField(fees, { fees = it }, label = { Text("Fees (optional)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { TxnKind.entries.forEach { k -> FilterChip(kind == k, { kind = k }, { Text(k.label) }) } }
+            if (!kind.isCash) OutlinedButton(onClick = { pick = true }, Modifier.fillMaxWidth()) { Text(if (symbol.isBlank() || symbol == CASH_SYMBOL) "Choose symbol" else Catalog.display(symbol)) }
+            if (!kind.amountOnly) OutlinedTextField(qty, { qty = it }, label = { Text("Quantity") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            OutlinedTextField(price, { price = it }, label = { Text(when (kind) {
+                TxnKind.DIVIDEND -> "Total dividend amount"; TxnKind.DEPOSIT -> "Amount to add"; TxnKind.WITHDRAWAL -> "Amount to withdraw"; else -> "Price per share"
+            }) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            if (kind == TxnKind.SELL) {
+                val proceeds = (Importer.num(qty) ?: 0.0) * (Importer.num(price) ?: 0.0) - (Importer.num(fees) ?: autoFee ?: 0.0)
+                if (proceeds > 0) Text("Proceeds of ${fmtMoney(proceeds)} go to this portfolio's cash.", style = MaterialTheme.typography.labelMedium, color = Up)
+            }
+            if (!kind.amountOnly) OutlinedTextField(fees, { fees = it }, label = { Text("Fees (optional)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 placeholder = autoFee?.let { { Text("auto ${fmtMoney(it)}") } },
                 supportingText = autoFee?.let { { Text("${Importer.fmtNum(pfDef!!.cryptoFeePct)}% crypto commission = ${fmtMoney(it)} (used if left blank)") } })
             OutlinedTextField(date, { date = it }, label = { Text("Date (YYYY-MM-DD)") }, singleLine = true)
@@ -309,20 +353,21 @@ private fun TxnDialog(existing: Txn?, defaultPortfolio: String, onDismiss: () ->
         }
     }, confirmButton = {
         TextButton(onClick = {
-            val p = Importer.num(price); val qn = if (kind == TxnKind.DIVIDEND) 0.0 else Importer.num(qty)
+            val p = Importer.num(price); val qn = if (kind.amountOnly) 0.0 else Importer.num(qty)
             val dt = PortfolioCalc.parseDate(date)
             err = when {
-                symbol.isBlank() -> "Choose a symbol"
-                qn == null || (kind != TxnKind.DIVIDEND && qn <= 0) -> "Enter a quantity"
-                p == null || p <= 0 -> "Enter a price"
+                !kind.isCash && (symbol.isBlank() || symbol == CASH_SYMBOL) -> "Choose a symbol"
+                qn == null || (!kind.amountOnly && qn <= 0) -> "Enter a quantity"
+                p == null || p <= 0 -> if (kind.amountOnly) "Enter the amount" else "Enter a price"
                 dt == null -> "Date not recognized"
                 else -> null
             }
             if (err == null) {
-                val fee = Importer.num(fees)?.let { kotlin.math.abs(it) } ?: autoFee ?: 0.0
-                val t = Txn(existing?.id ?: Store.newId(), symbol.uppercase(), kind, kotlin.math.abs(qn!!), kotlin.math.abs(p!!), fee, dt!!,
+                val fee = if (kind.amountOnly) 0.0 else Importer.num(fees)?.let { kotlin.math.abs(it) } ?: autoFee ?: 0.0
+                val t = Txn(existing?.id ?: Store.newId(), if (kind.isCash) CASH_SYMBOL else symbol.uppercase(), kind, kotlin.math.abs(qn!!), kotlin.math.abs(p!!), fee, dt!!,
                     if (fees.isBlank() && autoFee != null && autoFee > 0) (note.ifBlank { "" } + " ${Importer.fmtNum(pfDef!!.cryptoFeePct)}% crypto commission").trim() else note, pf)
                 Store.update { dd -> dd.copy(txns = if (existing == null) dd.txns + t else dd.txns.map { if (it.id == t.id) t else it }) }
+                if (kind == TxnKind.SELL && existing == null) Toast.makeText(ctx, "${fmtMoney(t.qty * t.price - t.fees)} added to cash", Toast.LENGTH_SHORT).show()
                 onDismiss()
             }
         }) { Text("Save") }
@@ -371,6 +416,8 @@ fun PortfolioMiniCard() {
             StatTile("Today", fmtSignedMoney(s.dayChange), Modifier.weight(1f), fmtPct(s.dayPct), changeColor(s.dayChange))
             StatTile("Total gain", fmtSignedMoney(s.unrealized), Modifier.weight(1f), fmtPct(s.totalReturnPct), changeColor(s.unrealized))
         }
+        if (s.cash.balance > 0.005) Text("Includes ${fmtMoney(s.cash.balance)} cash", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         Spacer(Modifier.height(6.dp))
         open.sortedByDescending { it.value(q[it.symbol]) ?: it.costBasis }.take(5).forEach { h ->
             val x = q[h.symbol]
@@ -528,11 +575,11 @@ fun ImportScreen(initialPortfolio: String) {
                             AssistChip(enabled = !filling, onClick = {
                                 filling = true
                                 scope.launch {
-                                    val need = drafts.filter { it.kind != TxnKind.DIVIDEND && Importer.num(it.price) == null && Importer.looksLikeSymbol(it.symbol) }.map { it.symbol.uppercase() }.distinct()
+                                    val need = drafts.filter { !it.kind.amountOnly && Importer.num(it.price) == null && Importer.looksLikeSymbol(it.symbol) }.map { it.symbol.uppercase() }.distinct()
                                     val qs = runCatching { Market.quotes(need) }.getOrDefault(emptyMap())
                                     for (i in drafts.indices) {
                                         val dr = drafts[i]
-                                        if (dr.kind != TxnKind.DIVIDEND && Importer.num(dr.price) == null) qs[dr.symbol.uppercase()]?.let { drafts[i] = dr.copy(price = Importer.fmtNum(it.price)) }
+                                        if (!dr.kind.amountOnly && Importer.num(dr.price) == null) qs[dr.symbol.uppercase()]?.let { drafts[i] = dr.copy(price = Importer.fmtNum(it.price)) }
                                     }
                                     filling = false
                                     Toast.makeText(ctx, "Filled ${qs.size} prices with the latest quote", Toast.LENGTH_SHORT).show()
@@ -623,20 +670,18 @@ private fun DraftCard(dr: DraftTxn, onChange: (DraftTxn) -> Unit, onDelete: () -
             }
             val small = TextStyle.Default.merge(MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(dr.symbol, { onChange(dr.copy(symbol = it.uppercase().trim())) }, Modifier.weight(1f), label = { Text("Symbol") }, singleLine = true, textStyle = small)
+                if (!dr.kind.isCash) OutlinedTextField(dr.symbol, { onChange(dr.copy(symbol = it.uppercase().trim())) }, Modifier.weight(1f), label = { Text("Symbol") }, singleLine = true, textStyle = small)
                 OutlinedTextField(dr.date, { onChange(dr.copy(date = it)) }, Modifier.weight(1.2f), label = { Text("Date") }, singleLine = true, textStyle = small)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TxnKind.entries.forEach { k ->
-                    FilterChip(dr.kind == k, { onChange(dr.copy(kind = k)) }, { Text(k.name.lowercase().replaceFirstChar { it.uppercase() }) })
-                }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TxnKind.entries.forEach { k -> FilterChip(dr.kind == k, { onChange(dr.copy(kind = k)) }, { Text(k.label) }) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (dr.kind != TxnKind.DIVIDEND) OutlinedTextField(dr.qty, { onChange(dr.copy(qty = it)) }, Modifier.weight(1f), label = { Text("Qty") }, singleLine = true, textStyle = small,
+                if (!dr.kind.amountOnly) OutlinedTextField(dr.qty, { onChange(dr.copy(qty = it)) }, Modifier.weight(1f), label = { Text("Qty") }, singleLine = true, textStyle = small,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                OutlinedTextField(dr.price, { onChange(dr.copy(price = it)) }, Modifier.weight(1f), label = { Text(if (dr.kind == TxnKind.DIVIDEND) "Amount" else "Price") }, singleLine = true, textStyle = small,
+                OutlinedTextField(dr.price, { onChange(dr.copy(price = it)) }, Modifier.weight(1f), label = { Text(if (dr.kind.amountOnly) "Amount" else "Price") }, singleLine = true, textStyle = small,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                if (dr.kind != TxnKind.DIVIDEND) OutlinedTextField(dr.fees, { onChange(dr.copy(fees = it)) }, Modifier.weight(0.8f), label = { Text("Fees") }, singleLine = true, textStyle = small,
+                if (!dr.kind.amountOnly) OutlinedTextField(dr.fees, { onChange(dr.copy(fees = it)) }, Modifier.weight(0.8f), label = { Text("Fees") }, singleLine = true, textStyle = small,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
             }
             if (dr.include) problems.forEach { Text("• $it", color = Gold, style = MaterialTheme.typography.labelMedium) }

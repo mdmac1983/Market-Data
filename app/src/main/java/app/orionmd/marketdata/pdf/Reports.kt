@@ -391,6 +391,8 @@ object Reports {
             PdfWriter.Tile("Realized", fmtSignedMoney(s.realized), null), PdfWriter.Tile("Cost basis", fmtMoney(s.cost)),
             PdfWriter.Tile("Dividends", fmtMoney(s.dividends)), PdfWriter.Tile("Positions", "${s.holdings.count { it.qty > 0 }}"),
             PdfWriter.Tile("Total return", fmtSignedMoney(s.totalReturn), null, chg(s.totalReturn)),
+            PdfWriter.Tile("Cash", fmtMoney(s.cash.balance), "from sales ${fmtMoney(s.cash.saleProceeds)}"),
+            PdfWriter.Tile("Invested", fmtMoney(s.investedValue)),
         ))
         val open = hs.filter { it.qty > 1e-9 }.let { l ->
             when (o.str("sort")) {
@@ -411,8 +413,9 @@ object Reports {
         }
         if (o.on("allocation") && o.on("charts")) {
             w.h1("Allocation")
-            val tot = open.sumOf { it.value(q[it.symbol]) ?: it.costBasis }
-            w.bars(open.map { Catalog.display(it.symbol) to (it.value(q[it.symbol]) ?: it.costBasis) / tot * 100 }.sortedByDescending { it.second }, signed = false) { i, _ -> PdfWriter.ACCENT }
+            val tot = (open.sumOf { it.value(q[it.symbol]) ?: it.costBasis } + s.cash.balance).takeIf { it > 0 } ?: 1.0
+            w.bars((open.map { Catalog.display(it.symbol) to (it.value(q[it.symbol]) ?: it.costBasis) / tot * 100 } +
+                listOfNotNull(s.cash.balance.takeIf { it > 0.005 }?.let { "Cash" to it / tot * 100 })).sortedByDescending { it.second }, signed = false) { _, _ -> PdfWriter.ACCENT }
         }
         if (o.on("closed")) hs.filter { it.qty <= 1e-9 }.takeIf { it.isNotEmpty() }?.let { cl ->
             w.h1("Closed positions")
@@ -427,9 +430,9 @@ object Reports {
         if (o.on("txns") && txns.isNotEmpty()) {
             w.h1("Transactions")
             w.table(listOf("Date", "Type", "Symbol", "Qty", "Price", "Fees", "Total"), listOf(1.1f, 0.9f, 1f, 0.8f, 1f, 0.8f, 1.2f), txns.sortedByDescending { it.date }.map {
-                listOf(Cell(PortfolioCalc.fmtDate(it.date)), Cell(it.kind.name.lowercase().replaceFirstChar { c -> c.uppercase() }), Cell(it.symbol, bold = true),
+                listOf(Cell(PortfolioCalc.fmtDate(it.date)), Cell(it.kind.label), Cell(if (it.kind.isCash) "Cash" else it.symbol, bold = true),
                     Cell(fmtNum(it.qty, 4).trimEnd('0').trimEnd('.'), right = true), Cell(fmtPrice(it.price), right = true), Cell(fmtMoney(it.fees), right = true),
-                    Cell(fmtMoney(if (it.kind == TxnKind.DIVIDEND && it.qty == 0.0) it.price else it.qty * it.price), right = true))
+                    Cell(fmtMoney(if (it.kind.amountOnly && it.qty == 0.0) it.price else it.qty * it.price), right = true))
             })
         }
         if (txns.isEmpty()) w.para("No transactions yet. Add holdings in the Portfolio screen.")
